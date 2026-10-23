@@ -1,0 +1,31 @@
+name: IEX daily closes
+
+on:
+  schedule:
+    # 17:00 KST, 화~토 (IEX는 전날 미국장 데이터를 한국시간 15:30~16:30쯤 공개)
+    # GitHub 예약 실행은 수십 분 늦게 시작될 수 있음
+    - cron: "0 8 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "YYYYMMDD (비우면 가장 최근 날짜)"
+        required: false
+
+jobs:
+  closes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Parse IEX TOPS
+        env:
+          DATE: ${{ inputs.date }}
+        run: python pipeline/iex_daily/iex_closes.py $DATE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iex-closes-${{ github.run_id }}
+          path: pipeline/iex_daily/output/*.csv
+          retention-days: 90
