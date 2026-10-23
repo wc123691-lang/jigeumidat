@@ -11,6 +11,8 @@
     python iex_closes.py                       # 가장 최근에 공개된 날짜
     python iex_closes.py 20261021              # 특정 날짜
     python iex_closes.py 20261021 --max-mb 300 # 앞부분 300MB만 (파서 확인용)
+    python iex_closes.py --out-dir data/iex --wait-new 4
+        # out-dir에 저장된 마지막 날짜보다 새 파일이 나올 때까지 최대 4시간 기다렸다가 처리
 """
 
 import argparse
@@ -34,6 +36,7 @@ OFFICIAL_PRICE = 0x58  # 'X'
 EXTENDED_HOURS = 0x40  # Sale Condition Flags: 장 전·후 거래
 IEX_TP_HEADER = 40
 PRICE_SCALE = 10_000  # IEX 가격은 소수점 4자리 정수
+POLL_SECONDS = 600
 
 
 class CountingReader:
@@ -56,6 +59,23 @@ class CountingReader:
 def latest_date() -> str:
     listing = json.load(urllib.request.urlopen(HIST_LIST_API, timeout=60))
     return max(d for d, files in listing.items() if any(f["feed"] == FEED for f in files))
+
+
+def wait_for_new_date(after: str, hours: float) -> str | None:
+    deadline = time.time() + hours * 3600
+    while True:
+        date = latest_date()
+        if date > after:
+            return date
+        if time.time() + POLL_SECONDS > deadline:
+            return None
+        print(f"아직 {after} 이후 파일 없음, {POLL_SECONDS // 60}분 뒤 다시 확인", flush=True)
+        time.sleep(POLL_SECONDS)
+
+
+def last_saved_date(out_dir: Path) -> str:
+    dates = [p.stem.removeprefix("iex_") for p in out_dir.glob("iex_????????.csv")]
+    return max(dates, default="00000000")
 
 
 def feed_link(date: str) -> str:
@@ -129,9 +149,9 @@ def parse(date: str, max_bytes: int | None):
     return last, official_close, counter.read_bytes, elapsed
 
 
-def write_csv(date: str, last: dict, official_close: dict, partial: bool) -> Path:
-    OUT_DIR.mkdir(exist_ok=True)
-    path = OUT_DIR / f"iex_{date}{'_partial' if partial else ''}.csv"
+def write_csv(out_dir: Path, date: str, last: dict, official_close: dict, partial: bool) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"iex_{date}{'_partial' if partial else ''}.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["symbol", "iex_last_price", "iex_official_close", "last_trade_utc", "volume", "trades"])
@@ -152,13 +172,24 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("date", nargs="?", help="YYYYMMDD (생략하면 가장 최근 날짜)")
     parser.add_argument("--max-mb", type=int, help="압축 기준 앞부분만 읽기 (테스트용)")
+    parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
+    parser.add_argument("--wait-new", type=float, metavar="HOURS",
+                        help="out-dir의 마지막 날짜보다 새 파일이 나올 때까지 기다릴 최대 시간")
     args = parser.parse_args()
 
-    date = args.date or latest_date()
+    if args.date:
+        date = args.date
+    elif args.wait_new is not None:
+        date = wait_for_new_date(last_saved_date(args.out_dir), args.wait_new)
+        if date is None:
+            print("새 파일이 없습니다 (휴장일이거나 IEX 공개 지연). 종료합니다.")
+            return
+    else:
+        date = latest_date()
     print(f"대상 날짜: {date}")
     max_bytes = args.max_mb * 1_000_000 if args.max_mb else None
     last, official_close, read_bytes, elapsed = parse(date, max_bytes)
-    path = write_csv(date, last, official_close, partial=max_bytes is not None)
+    path = write_csv(args.out_dir, date, last, official_close, partial=max_bytes is not None)
     mb = read_bytes / 1e6
     print(f"읽은 양 {mb:,.0f}MB / {elapsed:,.0f}초 ({mb / max(elapsed, 1):,.1f}MB/s)")
     print(f"종목 {len(last):,}개 → {path}")
