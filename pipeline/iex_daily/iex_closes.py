@@ -1,4 +1,4 @@
-"""IEX 거래소 공개 데이터(HIST, TOPS 피드)에서 종목별 일별 종가를 뽑는다.
+"""IEX 거래소 공개 데이터(HIST, DEEP 피드)에서 종목별 일별 종가를 뽑는다.
 
 - 데이터: https://iextrading.com/api/1.0/hist (무료, 가입 불필요, T+1 공개, 최근 12개월 보관)
 - 출처 표기 의무: "Data provided for free by IEX. By accessing or using IEX Historical Data,
@@ -26,13 +26,14 @@ from pathlib import Path
 
 HIST_LIST_API = "https://iextrading.com/api/1.0/hist"
 HIST_API = "https://iextrading.com/api/1.0/hist?date={date}"
+FEED = "DEEP"  # 체결 기록은 TOPS와 같고, 여러 피드 중 가장 먼저 공개됨
 OUT_DIR = Path(__file__).parent / "output"
 
 TRADE_REPORT = 0x54  # 'T'
 OFFICIAL_PRICE = 0x58  # 'X'
 EXTENDED_HOURS = 0x40  # Sale Condition Flags: 장 전·후 거래
 IEX_TP_HEADER = 40
-PRICE_SCALE = 10_000  # TOPS 가격은 소수점 4자리 정수
+PRICE_SCALE = 10_000  # IEX 가격은 소수점 4자리 정수
 
 
 class CountingReader:
@@ -54,14 +55,17 @@ class CountingReader:
 
 def latest_date() -> str:
     listing = json.load(urllib.request.urlopen(HIST_LIST_API, timeout=60))
-    return max(d for d, files in listing.items() if any(f["feed"] == "TOPS" for f in files))
+    return max(d for d, files in listing.items() if any(f["feed"] == FEED for f in files))
 
 
-def tops_link(date: str) -> str:
+def feed_link(date: str) -> str:
     files = json.load(urllib.request.urlopen(HIST_API.format(date=date), timeout=30))
     if not isinstance(files, list):
         sys.exit(f"{date} 파일이 아직 없습니다 (IEX는 다음 날 공개).")
-    return next(f["link"] for f in files if f["feed"] == "TOPS")
+    link = next((f["link"] for f in files if f["feed"] == FEED), None)
+    if link is None:
+        sys.exit(f"{date} {FEED} 파일이 아직 없습니다.")
+    return link
 
 
 def iter_packets(stream):
@@ -88,7 +92,7 @@ def iex_tp_payload(packet: memoryview) -> memoryview | None:
 
 
 def parse(date: str, max_bytes: int | None):
-    resp = urllib.request.urlopen(tops_link(date), timeout=60)
+    resp = urllib.request.urlopen(feed_link(date), timeout=60)
     counter = CountingReader(resp, max_bytes)
     stream = gzip.GzipFile(fileobj=counter)
 

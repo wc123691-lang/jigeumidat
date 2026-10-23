@@ -2,9 +2,9 @@ name: IEX daily closes
 
 on:
   schedule:
-    # 17:00 KST, 화~토 (IEX는 전날 미국장 데이터를 한국시간 15:30~16:30쯤 공개)
+    # 18:00 KST, 화~토 (IEX DEEP 공개 실측: 10/21분 15:30 KST, 10/22분 17:08 KST)
     # GitHub 예약 실행은 수십 분 늦게 시작될 수 있음
-    - cron: "0 8 * * 2-6"
+    - cron: "0 9 * * 2-6"
   workflow_dispatch:
     inputs:
       date:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Parse IEX TOPS
+      - name: Parse IEX DEEP
         env:
           DATE: ${{ inputs.date }}
         run: python pipeline/iex_daily/iex_closes.py $DATE
