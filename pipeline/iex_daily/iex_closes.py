@@ -78,14 +78,14 @@ def last_saved_date(out_dir: Path) -> str:
     return max(dates, default="00000000")
 
 
-def feed_link(date: str) -> str:
+def feed_file(date: str) -> dict:
     files = json.load(urllib.request.urlopen(HIST_API.format(date=date), timeout=30))
     if not isinstance(files, list):
         sys.exit(f"{date} 파일이 아직 없습니다 (IEX는 다음 날 공개).")
-    link = next((f["link"] for f in files if f["feed"] == FEED), None)
-    if link is None:
+    file = next((f for f in files if f["feed"] == FEED), None)
+    if file is None:
         sys.exit(f"{date} {FEED} 파일이 아직 없습니다.")
-    return link
+    return file
 
 
 def iter_packets(stream):
@@ -112,7 +112,8 @@ def iex_tp_payload(packet: memoryview) -> memoryview | None:
 
 
 def parse(date: str, max_bytes: int | None):
-    resp = urllib.request.urlopen(feed_link(date), timeout=60)
+    file = feed_file(date)
+    resp = urllib.request.urlopen(file["link"], timeout=60)
     counter = CountingReader(resp, max_bytes)
     stream = gzip.GzipFile(fileobj=counter)
 
@@ -144,7 +145,10 @@ def parse(date: str, max_bytes: int | None):
                     official_close[sym] = price
                 pos += 2 + length
     except (EOFError, gzip.BadGzipFile):
-        pass  # --max-mb로 중간에 끊은 경우
+        if max_bytes is None:
+            raise  # 전체 실행에서 파일이 중간에 끝났다면 다운로드가 끊긴 것
+    if max_bytes is None and counter.read_bytes != int(file["size"]):
+        raise RuntimeError(f"다운로드가 중간에 끊김: {counter.read_bytes:,} / {int(file['size']):,} bytes")
     elapsed = time.time() - started
     return last, official_close, counter.read_bytes, elapsed
 
