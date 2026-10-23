@@ -1,0 +1,82 @@
+name: IEX backfill
+
+# 아직 저장 안 된 과거 날짜를 최신순으로 count개 골라 병렬 처리한 뒤 한 번에 커밋한다.
+# 여러 번 나눠 돌려도 이미 저장된 날짜는 건너뛴다.
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "이번에 처리할 날짜 수 (최대 250)"
+        default: "20"
+      parallel:
+        description: "동시에 돌릴 작업 수"
+        default: "10"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iex-daily
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      dates: ${{ steps.pick.outputs.dates }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - id: pick
+        env:
+          COUNT: ${{ inputs.count }}
+        run: |
+          dates=$(python pipeline/iex_daily/missing_dates.py "$COUNT" data/iex)
+          echo "처리할 날짜: $dates"
+          echo "dates=$dates" >> "$GITHUB_OUTPUT"
+
+  fetch:
+    needs: plan
+    if: needs.plan.outputs.dates != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.parallel) }}
+      matrix:
+        date: ${{ fromJSON(needs.plan.outputs.dates) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python pipeline/iex_daily/iex_closes.py ${{ matrix.date }} --out-dir out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iex-${{ matrix.date }}
+          path: out/iex_${{ matrix.date }}.csv
+          retention-days: 1
+
+  commit:
+    needs: fetch
+    if: always() && needs.fetch.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: iex-*
+          path: data/iex
+          merge-multiple: true
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/iex
+          if git diff --cached --quiet; then
+            echo "저장할 새 파일 없음"
+          else
+            git commit -m "IEX backfill: $(git diff --cached --name-only | wc -l) days"
+            git pull --rebase
+            git push
+          fi
