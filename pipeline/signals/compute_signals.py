@@ -281,6 +281,15 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
+    # 앱용 작은 파일: 종목별 신호 점수만 (사용자 비중으로 '내 신호'를 앱에서 계산)
+    fields = ["s_rsi", "s_bb", "s_gap", "s_trend", "s_dd", "s_ins", "rsi14"]
+    compact = {
+        "date": date,
+        "fields": fields,
+        "data": {r["symbol"]: [round(r[k], 1) if isinstance(r[k], (int, float)) and not isinstance(r[k], bool) else None
+                               for k in fields] for r in rows},
+    }
+    (OUT_DIR / "scores_latest.json").write_text(json.dumps(compact, separators=(",", ":")), encoding="utf-8")
     (OUT_DIR / "market_latest.json").write_text(
         json.dumps({k: round(v, 4) if isinstance(v, float) else v for k, v in market.items()},
                    ensure_ascii=False, indent=1), encoding="utf-8")
