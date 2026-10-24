@@ -22,6 +22,8 @@ jobs:
         env:
           SEC_USER_AGENT: "jigeumidat ${{ github.repository_owner }}@users.noreply.github.com"
         run: python pipeline/signals/compute_signals.py
+      - name: Similar periods
+        run: python pipeline/signals/similar_periods.py
       - name: Commit result
         run: |
           git config user.name "github-actions[bot]"
