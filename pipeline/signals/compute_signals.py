@@ -53,6 +53,8 @@ PRESETS = {
     # 추세 추종은 200일선 괴리를 반대 방향(선 위가 매수 쪽)으로 본다
     "trend": {"fg": 1, "vix": 2, "fx": 1, "spx": 5, "rsi": 2, "bb": 4, "trend": 4, "ins": 2, "dd": 1},
 }
+# 프리셋별 RSI 기준선 (앱 src/signals.ts와 같다). 추세 추종은 오르는 종목의 RSI가 30까지 잘 안 내려와서 40/80.
+PRESET_RSI = {"steady": (30, 70), "contra": (25, 75), "trend": (40, 80)}
 
 
 def clamp(x: float) -> float:
@@ -212,12 +214,17 @@ def bollinger(prices: list[float], period: int = 20):
     return pct_b, width, squeeze
 
 
+def rsi_score(r: float, buy: float = 30, sell: float = 70) -> float:
+    """기준선에 닿으면 만점: 매수선 아래 +100, 두 선 가운데 0, 매도선 위 -100 (앱 rsiScore와 같은 공식)."""
+    return clamp(((buy + sell) / 2 - r) / ((sell - buy) / 2) * 100)
+
+
 def scores(prices: list[float]) -> dict:
     out = {}
     r = rsi(prices)
     if r is not None:
         out["rsi14"] = r
-        out["s_rsi"] = clamp((50 - r) * 100 / 30)  # 20 이하 +100, 80 이상 -100
+        out["s_rsi"] = rsi_score(r)  # 30 이하 +100, 70 이상 -100 (앱은 rsi14로 사용자 기준선에 맞춰 다시 계산)
     pct_b, width, squeeze = bollinger(prices)
     if pct_b is not None:
         out.update(bb_pctb=pct_b, bb_width=width, bb_squeeze=squeeze)
@@ -271,7 +278,8 @@ def main() -> None:
             value = signal.get(key)
             row[key] = round(value, 4) if isinstance(value, float) else value
         for name, weights in PRESETS.items():
-            value = preset_score(signal, weights)
+            preset_signal = {**signal, "s_rsi": rsi_score(signal["rsi14"], *PRESET_RSI[name])} if "rsi14" in signal else signal
+            value = preset_score(preset_signal, weights)
             row[f"score_{name}"] = round(value, 1) if value is not None else None
         rows.append(row)
 
