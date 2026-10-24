@@ -7,14 +7,17 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
 - 분기 데이터셋은 한 번 받아 정리한 결과를 output/form345/<분기>.csv에 두고 다시 받지 않는다 (압축 파일은 지운다).
 - 회사(CIK) 단위로 묶어 티커가 바뀐 회사(FB → META)도 이어지게 하고, 지금 우리가 다루는 종목(scores_latest.json)만 내보낸다.
 - 같은 공시·같은 날·같은 거래코드의 여러 줄(가격대별 분할 체결)은 한 줄로 합친다 (평균 가격).
+- 공시 가격이 그날 IEX 종가와 3배 넘게 다르면 잘못 적힌 공시(가격 칸에 총액, 단위 착오 등)로 보고 뺀다.
+  안 빼면 '1주당 $2,272,653' 같은 공시 하나가 매수액 순위 맨 위를 차지한다.
 
     python history.py
 
 출력: data/insider/by_ticker/<티커>.json (CON 같은 윈도우 예약 이름은 _CON.json)
   {"ticker", "issuer", "rows": [[거래일, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 거래 후 보유, 10b5-1 여부, 공시일], ...]}
   관계: D 이사, O 임원, T 10% 이상 주주 (여러 개면 붙여 씀). 최근 거래가 앞.
-      data/insider/latest.json  최근 30일 공시 전체 (내부자 탭 첫 화면)
-  {"days", "rows": [[공시일, 거래일, 티커, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 10b5-1 여부], ...]}
+      data/insider/summary.json  종목별·기간별 합계 (내부자 탭 첫 화면, 거래일 기준)
+  {"asof", "periods": [30, 90, 180, 365],
+   "rows": [[티커, 회사, 마지막 매수일, 마지막 매도일, [기간마다: 매수액, 매수자 수, 매수 건수, 매도액, 매도자 수, 매도 건수, 계획 매도액] 또는 0], ...]}
 """
 
 import csv
@@ -33,10 +36,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 INSIDER = ROOT / "data" / "insider"
 OUT = INSIDER / "by_ticker"
-LATEST = INSIDER / "latest.json"
-LATEST_DAYS = 30
+SUMMARY = INSIDER / "summary.json"
+PERIODS = (30, 90, 180, 365)  # 앱의 1개월·3개월·6개월·1년
 CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
+IEX = ROOT / "data" / "iex"
+PRICE_TOLERANCE = 3  # 공시 가격 / 종가가 1/3 ~ 3배 밖이면 뺀다
 LISTING = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
 FIRST_QUARTER = "2021q4"  # 최근 5년
 CODES = ("P", "S")
@@ -130,6 +135,7 @@ def daily_rows() -> list[dict]:
             continue
         with path.open(encoding="utf-8") as f:
             for r in csv.DictReader(f):
+                r["trade_date"] = r["trade_date"][:10]  # Form 4 XML 날짜에 시간대가 붙기도 한다 (2026-09-28-05:00)
                 key = (r["accession"], r["trade_date"], code)
                 row = merged.get(key)
                 if row is None:
@@ -147,10 +153,20 @@ def daily_rows() -> list[dict]:
 
 
 def candidate_tickers(symbol: str, universe: set[str]) -> set[str]:
-    """공시의 티커 칸('BRK.A', 'BFA, BFB' 등) → 우리 종목 목록의 티커들. 클래스 주식은 같은 회사의 다른 클래스도 함께."""
+    """공시의 티커 칸('BRK.A', 'BFA, BFB' 등) → 우리 종목 목록의 티커들. 클래스 주식은 같은 회사의 다른 클래스도 함께.
+
+    티커 칸은 사람이 적어서 'N/A', 'NYSE: KRC', 'Z AND ZG', 'N O G' 같은 값이 섞여 있다.
+    'N/A'를 나눠 'A'(애질런트)로 잇는 일이 없게, 여러 조각일 때 한 글자 조각은 쓰지 않는다.
+    """
+    s = re.sub(r"\b(NYSE|NASDAQ|AMEX|NYSEAMERICAN|OTC|OTCQB|OTCQX|OTCBB)\b\s*[:/]?", " ", symbol.upper())
+    if s.strip() in ("N/A", "NA", "NONE", "-"):
+        return set()
+    tokens = [t for t in re.split(r"[\s,;/]+", s) if t and t != "AND"]
+    if len(tokens) > 1 and all(len(t) == 1 for t in tokens):
+        tokens = ["".join(tokens)]  # N O G → NOG
     found = set()
-    for token in re.split(r"[\s,;/]+", symbol.upper()):
-        if not token:
+    for token in tokens:
+        if len(token) == 1 and len(tokens) > 1:
             continue
         options = {token, token.replace("-", ".")}
         if len(token) >= 3 and "." not in token:
@@ -170,6 +186,33 @@ RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM\d|LPT\d)$")
 
 def file_name(ticker: str) -> str:
     return ("_" if RESERVED.match(ticker) else "") + ticker + ".json"
+
+
+_closes: dict[str, dict[str, float]] = {}
+
+
+def close_near(day: str, ticker: str) -> float | None:
+    """거래일(휴장이면 5일 전까지)의 IEX 종가."""
+    d = date.fromisoformat(day)
+    for back in range(6):
+        key = (d - timedelta(days=back)).strftime("%Y%m%d")
+        if key not in _closes:
+            path = IEX / f"iex_{key}.csv"
+            _closes[key] = {}
+            if path.exists():
+                with path.open(encoding="utf-8") as f:
+                    _closes[key] = {r["symbol"]: float(r["iex_last_price"]) for r in csv.DictReader(f) if r["iex_last_price"]}
+        if ticker in _closes[key]:
+            return _closes[key][ticker]
+    return None
+
+
+def plausible(r: dict, ticker: str) -> bool:
+    shares, value = float(r["shares"]), float(r["value"])
+    if value <= 0:
+        return True  # 가격 없는 거래(증여성 등)는 금액에 영향이 없다
+    close = close_near(r["trade_date"], ticker)
+    return close is None or 1 / PRICE_TOLERANCE <= (value / shares) / close <= PRICE_TOLERANCE
 
 
 def main() -> None:
@@ -197,11 +240,23 @@ def main() -> None:
             if t not in claims or r["filed"] > claims[t][0]:
                 claims[t] = (r["filed"], r["issuer_cik"])
 
+    # 회사마다 대표 티커 하나 (요약 목록과 가격 확인용)
+    ticker_of: dict[str, str] = {}
+    for ticker, (_, cik) in sorted(claims.items()):
+        ticker_of.setdefault(cik, ticker)
+    dropped = 0
+    for cik, ticker in ticker_of.items():
+        kept = [r for r in by_cik[cik] if plausible(r, ticker)]
+        dropped += len(by_cik[cik]) - len(kept)
+        by_cik[cik] = kept
+
     OUT.mkdir(parents=True, exist_ok=True)
     written = set()
     today = date.today().isoformat()
     for ticker, (_, cik) in sorted(claims.items()):
         trades = sorted(by_cik[cik], key=lambda r: (r["trade_date"], r["filed"]), reverse=True)
+        if not trades:
+            continue
         out = []
         for r in trades:
             shares, value = float(r["shares"]), float(r["value"])
@@ -219,19 +274,30 @@ def main() -> None:
         if stale.name not in written:
             stale.unlink()
 
-    # 내부자 탭 첫 화면: 전체 종목의 최근 공시 목록 (공시일 최신순)
-    ticker_of: dict[str, str] = {}
-    for ticker, (_, cik) in sorted(claims.items()):
-        ticker_of.setdefault(cik, ticker)
-    since = (date.today() - timedelta(days=LATEST_DAYS)).isoformat()
-    latest = sorted((r for r in rows.values() if r["filed"] >= since and r["issuer_cik"] in ticker_of
-                     and r["trade_date"] >= first_day and float(r["shares"]) > 0),
-                    key=lambda r: (r["filed"], float(r["value"])), reverse=True)
-    feed = [[r["filed"], r["trade_date"], ticker_of[r["issuer_cik"]], r["code"], r["owner"], r["role"], r["title"],
-             round(float(r["shares"]), 4), round(float(r["value"]) / float(r["shares"]), 4), round(float(r["value"])),
-             1 if r["plan"] in (True, "True") else 0] for r in latest]
-    LATEST.write_text(json.dumps({"days": LATEST_DAYS, "rows": feed}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"{today} 종목 {len(written)}개 내부자 거래 내역 저장")
+    # 내부자 탭 첫 화면: 종목별로 기간마다 매수·매도 합계. 한 회사의 여러 클래스(BF.A·BF.B)는 대표 티커 하나로만 센다.
+    since = [(date.today() - timedelta(days=d)).isoformat() for d in PERIODS]
+    summary = []
+    for cik, ticker in sorted(ticker_of.items(), key=lambda x: x[1]):
+        recent = [r for r in by_cik[cik] if r["trade_date"] >= since[-1]]
+        if not recent:
+            continue
+        stats = []
+        for start in since:
+            s = [r for r in recent if r["trade_date"] >= start]
+            buys = [r for r in s if r["code"] == "P"]
+            sells = [r for r in s if r["code"] == "S"]
+            value = lambda rs: round(sum(float(r["value"]) for r in rs))
+            stats.append([value(buys), len({r["owner"] for r in buys}), len(buys),
+                          value(sells), len({r["owner"] for r in sells}), len(sells),
+                          value([r for r in sells if r["plan"] in (True, "True")])] if s else 0)
+        last = lambda code: max((r["trade_date"] for r in recent if r["code"] == code), default="")
+        summary.append([ticker, max(recent, key=lambda r: r["filed"])["issuer"], last("P"), last("S"), stats])
+    SUMMARY.write_text(json.dumps({"asof": today, "periods": list(PERIODS), "rows": summary}, ensure_ascii=False,
+                                  separators=(",", ":")), encoding="utf-8")
+    old_feed = INSIDER / "latest.json"  # 예전 첫 화면 파일 (최근 30일 공시 목록)
+    if old_feed.exists():
+        old_feed.unlink()
+    print(f"{today} 종목 {len(written)}개 내부자 거래 내역 저장 (가격이 종가와 크게 달라 뺀 공시 {dropped}건)")
 
 
 if __name__ == "__main__":
