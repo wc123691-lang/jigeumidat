@@ -1,0 +1,212 @@
+"""종목별 내부자 거래 내역 (최근 5년, 장내 매수 P·장내 매도 S) → 앱의 '내부자' 화면용 파일.
+
+과거분은 SEC가 분기마다 공개하는 Form 3·4·5 정리 데이터셋(Insider Transactions Data Sets)에서,
+아직 데이터셋이 나오지 않은 최근분은 form4.py가 매일 모은 purchases.csv·sales.csv에서 가져온다.
+SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실행한다 (run_daily.bat).
+
+- 분기 데이터셋은 한 번 받아 정리한 결과를 output/form345/<분기>.csv에 두고 다시 받지 않는다 (압축 파일은 지운다).
+- 회사(CIK) 단위로 묶어 티커가 바뀐 회사(FB → META)도 이어지게 하고, 지금 우리가 다루는 종목(scores_latest.json)만 내보낸다.
+- 같은 공시·같은 날·같은 거래코드의 여러 줄(가격대별 분할 체결)은 한 줄로 합친다 (평균 가격).
+
+    python history.py
+
+출력: data/insider/by_ticker/<티커>.json
+  {"ticker", "issuer", "rows": [[거래일, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 거래 후 보유, 10b5-1 여부, 공시일], ...]}
+  관계: D 이사, O 임원, T 10% 이상 주주 (여러 개면 붙여 씀). 최근 거래가 앞.
+"""
+
+import csv
+import io
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+import zipfile
+from collections import defaultdict
+from datetime import date, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+INSIDER = ROOT / "data" / "insider"
+OUT = INSIDER / "by_ticker"
+CACHE = ROOT / "output" / "form345"
+UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
+LISTING = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
+FIRST_QUARTER = "2021q4"  # 최근 5년
+CODES = ("P", "S")
+COLUMNS = ["issuer_cik", "symbol", "issuer", "accession", "filed", "trade_date", "code", "owner", "role", "title",
+           "shares", "value", "shares_after", "plan"]
+
+csv.field_size_limit(10**8)
+
+
+def sec_get(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": os.environ["SEC_USER_AGENT"]})
+    time.sleep(0.12)  # SEC 요청 제한: 초당 10회
+    return urllib.request.urlopen(req, timeout=300).read()
+
+
+def sec_date(s: str) -> str:
+    return datetime.strptime(s, "%d-%b-%Y").date().isoformat() if s else ""
+
+
+def role_of(relationship: str) -> str:
+    return "".join(letter for word, letter in (("Director", "D"), ("Officer", "O"), ("TenPercentOwner", "T")) if word in relationship)
+
+
+def quarter_rows(raw_zip: bytes) -> list[dict]:
+    """분기 데이터셋 하나 → 장내 매수·매도 (공시·날짜·코드별로 합친 행)."""
+    z = zipfile.ZipFile(io.BytesIO(raw_zip))
+    read = lambda name: csv.DictReader(io.TextIOWrapper(z.open(name), encoding="utf-8"), delimiter="\t")
+    subs = {r["ACCESSION_NUMBER"]: r for r in read("SUBMISSION.tsv")}
+    owners: dict[str, list[dict]] = defaultdict(list)
+    for r in read("REPORTINGOWNER.tsv"):
+        owners[r["ACCESSION_NUMBER"]].append(r)
+    plan_notes = {(r["ACCESSION_NUMBER"], r["FOOTNOTE_ID"]) for r in read("FOOTNOTES.tsv") if "10b5-1" in r["FOOTNOTE_TXT"]}
+
+    merged: dict[tuple, dict] = {}
+    for t in read("NONDERIV_TRANS.tsv"):
+        code = t["TRANS_CODE"]
+        sub = subs.get(t["ACCESSION_NUMBER"])
+        if code not in CODES or sub is None:
+            continue
+        acc = t["ACCESSION_NUMBER"]
+        shares = float(t["TRANS_SHARES"] or 0)
+        price = float(t["TRANS_PRICEPERSHARE"] or 0)
+        # 이 거래에 달린 각주 중 10b5-1(미리 정해 둔 매매 계획)을 말하는 것이 있으면 계획 거래
+        notes = {fid.strip() for k, v in t.items() if k.endswith("_FN") and v for fid in v.split(",")}
+        plan = sub["AFF10B5ONE"] in ("1", "true") or any((acc, fid) in plan_notes for fid in notes)
+        key = (acc, sec_date(t["TRANS_DATE"]), code)
+        row = merged.get(key)
+        if row is None:
+            people = owners.get(acc, [])
+            row = merged[key] = {
+                "issuer_cik": sub["ISSUERCIK"].lstrip("0"), "symbol": sub["ISSUERTRADINGSYMBOL"], "issuer": sub["ISSUERNAME"],
+                "accession": acc, "filed": sec_date(sub["FILING_DATE"]), "trade_date": key[1], "code": code,
+                "owner": "; ".join(p["RPTOWNERNAME"] for p in people),
+                "role": "".join(sorted({c for p in people for c in role_of(p["RPTOWNER_RELATIONSHIP"])})),
+                "title": next((p["RPTOWNER_TITLE"] for p in people if p["RPTOWNER_TITLE"]), ""),
+                "shares": 0.0, "value": 0.0, "shares_after": "", "plan": False,
+            }
+        row["shares"] += shares
+        row["value"] += shares * price
+        row["shares_after"] = t["SHRS_OWND_FOLWNG_TRANS"] or row["shares_after"]
+        row["plan"] = row["plan"] or plan
+    return list(merged.values())
+
+
+def cached_quarters() -> list[Path]:
+    """새로 나온 분기 데이터셋을 받아 정리해 둔다. 이미 정리한 분기는 건너뛴다."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    page = sec_get(LISTING).decode("utf-8", "replace")
+    links = dict((q, path) for path, q in re.findall(r'href="(/files/[^"]*?/(\d{4}q\d)_form345\.zip)"', page))
+    for q in sorted(links):
+        target = CACHE / f"{q}.csv"
+        if q < FIRST_QUARTER or target.exists():
+            continue
+        print(f"{q} 데이터셋 받는 중", flush=True)
+        rows = quarter_rows(sec_get("https://www.sec.gov" + links[q]))
+        with target.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
+        print(f"{q} 장내 매수·매도 {len(rows)}건", flush=True)
+    return sorted(CACHE.glob("*.csv"))
+
+
+def daily_rows() -> list[dict]:
+    """form4.py가 매일 모은 최근분 (분기 데이터셋과 겹치는 공시는 나중에 걸러진다)."""
+    merged: dict[tuple, dict] = {}
+    for code, name in (("P", "purchases.csv"), ("S", "sales.csv")):
+        path = INSIDER / name
+        if not path.exists():
+            continue
+        with path.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                key = (r["accession"], r["trade_date"], code)
+                row = merged.get(key)
+                if row is None:
+                    role = "".join(c for c, flag in (("D", "is_director"), ("O", "is_officer"), ("T", "is_ten_percent")) if r[flag] == "True")
+                    row = merged[key] = {
+                        "issuer_cik": r["issuer_cik"].lstrip("0"), "symbol": r["ticker"], "issuer": r["issuer"],
+                        "accession": r["accession"], "filed": r["filed"], "trade_date": r["trade_date"], "code": code,
+                        "owner": r["owner"], "role": role, "title": r["title"],
+                        "shares": 0.0, "value": 0.0, "shares_after": "", "plan": r["is_10b5_1"] == "True",
+                    }
+                row["shares"] += float(r["shares"] or 0)
+                row["value"] += float(r["value"] or 0)
+                row["shares_after"] = r["shares_after"] or row["shares_after"]
+    return list(merged.values())
+
+
+def candidate_tickers(symbol: str, universe: set[str]) -> set[str]:
+    """공시의 티커 칸('BRK.A', 'BFA, BFB' 등) → 우리 종목 목록의 티커들. 클래스 주식은 같은 회사의 다른 클래스도 함께."""
+    found = set()
+    for token in re.split(r"[\s,;/]+", symbol.upper()):
+        if not token:
+            continue
+        options = {token, token.replace("-", ".")}
+        if len(token) >= 3 and "." not in token:
+            options.add(token[:-1] + "." + token[-1])  # BFB → BF.B
+        found |= options & universe
+        for t in options:
+            # 클래스 주식(BRK.A)은 우리 목록에 없는 클래스여도 같은 회사의 다른 클래스(BRK.B)로 잇는다
+            if "." in t and (t in universe or token == t):
+                root = t.split(".")[0] + "."
+                found |= {u for u in universe if u.startswith(root)}
+    return found
+
+
+def main() -> None:
+    if not os.environ.get("SEC_USER_AGENT"):
+        sys.exit("SEC_USER_AGENT 환경변수를 '앱이름 연락처이메일' 형식으로 설정하세요 (SEC 요구사항).")
+    universe = set(json.loads(UNIVERSE.read_text(encoding="utf-8"))["data"])
+    first_day = f"{FIRST_QUARTER[:4]}-{(int(FIRST_QUARTER[-1]) - 1) * 3 + 1:02d}-01"
+
+    rows: dict[tuple, dict] = {}
+    for path in cached_quarters():
+        with path.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                rows[(r["accession"], r["trade_date"], r["code"])] = r
+    for r in daily_rows():
+        rows.setdefault((r["accession"], r["trade_date"], r["code"]), r)
+
+    # 회사별로 묶고, 티커마다 그 티커를 가장 최근에 쓴 회사를 고른다 (티커 재사용 대비)
+    by_cik: dict[str, list[dict]] = defaultdict(list)
+    claims: dict[str, tuple[str, str]] = {}  # 티커 → (최근 공시일, CIK)
+    for r in rows.values():
+        if not r["trade_date"] or r["trade_date"] < first_day or float(r["shares"]) <= 0:
+            continue
+        by_cik[r["issuer_cik"]].append(r)
+        for t in candidate_tickers(r["symbol"], universe):
+            if t not in claims or r["filed"] > claims[t][0]:
+                claims[t] = (r["filed"], r["issuer_cik"])
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    written = set()
+    today = date.today().isoformat()
+    for ticker, (_, cik) in sorted(claims.items()):
+        trades = sorted(by_cik[cik], key=lambda r: (r["trade_date"], r["filed"]), reverse=True)
+        out = []
+        for r in trades:
+            shares, value = float(r["shares"]), float(r["value"])
+            after = float(r["shares_after"]) if r["shares_after"] else None
+            out.append([r["trade_date"], r["code"], r["owner"], r["role"], r["title"], round(shares, 4),
+                        round(value / shares, 4), round(value), after, 1 if r["plan"] in (True, "True") else 0, r["filed"]])
+        body = {"ticker": ticker, "issuer": trades[0]["issuer"], "rows": out}
+        path = OUT / f"{ticker}.json"
+        text = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+        # 내용이 같으면 다시 쓰지 않아 매일 커밋이 바뀐 종목만 담게 한다
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
+        written.add(path.name)
+    for stale in OUT.glob("*.json"):
+        if stale.name not in written:
+            stale.unlink()
+    print(f"{today} 종목 {len(written)}개 내부자 거래 내역 저장")
+
+
+if __name__ == "__main__":
+    main()
