@@ -45,7 +45,8 @@ STALE_MINUTES = 30  # 마지막 체결이 마감보다 이만큼 이르면 신�
 PRESETS = {
     "steady": {"fg": 4, "vix": 2, "fx": 3, "spx": 3, "rsi": 2, "bb": 1, "gap": 3, "ins": 3, "dd": 4},
     "contra": {"fg": 5, "vix": 4, "fx": 2, "spx": 1, "rsi": 4, "bb": 1, "gap": 2, "ins": 4, "dd": 5},
-    "trend": {"fg": 1, "vix": 2, "fx": 1, "spx": 5, "rsi": 2, "bb": 4, "gap": 4, "ins": 2, "dd": 1},
+    # 추세 추종은 200일선 괴리를 반대 방향(선 위가 매수 쪽)으로 본다
+    "trend": {"fg": 1, "vix": 2, "fx": 1, "spx": 5, "rsi": 2, "bb": 4, "trend": 4, "ins": 2, "dd": 1},
 }
 
 
@@ -94,14 +95,26 @@ def split_candidates(series: dict) -> list[tuple[str, str, float]]:
     return found
 
 
+class SecUnavailable(Exception):
+    """SEC가 접속을 거절했거나 장애. 데이터가 없는 것(404)과 구분한다."""
+
+
 def sec_get(url: str):
+    """JSON을 돌려주고, 데이터가 없으면(404) None."""
     req = urllib.request.Request(url, headers={"User-Agent": os.environ["SEC_USER_AGENT"]})
     time.sleep(0.15)  # SEC 요청 제한: 초당 10회
-    return json.load(urllib.request.urlopen(req, timeout=60))
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=60))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise SecUnavailable(f"HTTP {e.code}") from e
+    except urllib.error.URLError as e:
+        raise SecUnavailable(str(e.reason)) from e
 
 
-def share_points(concept: dict) -> list[tuple[str, int]]:
-    shares = concept.get("units", {}).get("shares") or []
+def share_points(concept: dict | None) -> list[tuple[str, int]]:
+    shares = (concept or {}).get("units", {}).get("shares") or []
     return sorted({(x["end"].replace("-", ""), x["val"]) for x in shares})
 
 
@@ -109,13 +122,10 @@ def judge_split(cik: int | None, date: str, factor: float) -> tuple[str, str]:
     """(판정, 근거). 판정: split(보정) / move(실제 등락, 보정 안 함) / pending(아직 판단 불가, 보정)"""
     if cik is None:
         return "split", "SEC 공시 없음(ETF·펀드 등), 가격 비율로 판단"
-    try:
-        points = share_points(sec_get(SEC_SHARES.format(cik=cik)))
-        if not points:
-            facts = sec_get(SEC_FACTS.format(cik=cik))
-            points = share_points(facts["facts"].get("dei", {}).get("EntityCommonStockSharesOutstanding", {}))
-    except urllib.error.HTTPError:
-        return "split", "SEC 발행 주식 수 데이터 없음, 가격 비율로 판단"
+    points = share_points(sec_get(SEC_SHARES.format(cik=cik)))
+    if not points:
+        facts = sec_get(SEC_FACTS.format(cik=cik)) or {}
+        points = share_points(facts.get("facts", {}).get("dei", {}).get("EntityCommonStockSharesOutstanding"))
     if not points:
         return "split", "SEC 발행 주식 수 데이터 없음, 가격 비율로 판단"
     before = [v for d, v in points if d < date]
@@ -135,13 +145,21 @@ def resolve_splits(candidates: list) -> dict[tuple[str, str], float]:
         with DECISIONS_PATH.open(encoding="utf-8") as f:
             saved = {(r["symbol"], r["date"]): r for r in csv.DictReader(f)}
     ciks = None
+    sec_error = None
     rows = []
     for symbol, date, factor in sorted(candidates, key=lambda c: (c[1], c[0])):
         row = saved.get((symbol, date))
         if row is None or row["decision"] == "pending":
-            if ciks is None:
-                ciks = {v["ticker"]: v["cik_str"] for v in sec_get(SEC_TICKERS).values()}
-            decision, reason = judge_split(ciks.get(symbol.replace(".", "-")), date, factor)
+            if sec_error is None:
+                try:
+                    if ciks is None:
+                        ciks = {v["ticker"]: v["cik_str"] for v in sec_get(SEC_TICKERS).values()}
+                    decision, reason = judge_split(ciks.get(symbol.replace(".", "-")), date, factor)
+                except SecUnavailable as e:
+                    sec_error = e
+                    print(f"SEC 조회 실패({e}), 남은 후보는 가격 비율로 임시 보정", file=sys.stderr)
+            if sec_error is not None:
+                decision, reason = "pending", f"SEC 조회 실패({sec_error}), 가격 비율로 임시 보정"
             row = {"symbol": symbol, "date": date, "price_factor": factor, "decision": decision, "reason": reason}
         rows.append(row)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -203,6 +221,7 @@ def scores(prices: list[float]) -> dict:
         gap = prices[-1] / statistics.fmean(prices[-200:]) - 1
         out["sma200_gap"] = gap
         out["s_gap"] = clamp(-gap * 500)  # 200일선 -20% 이하 +100, +20% 이상 -100
+        out["s_trend"] = -out["s_gap"]
     if len(prices) >= 200:
         dd = prices[-1] / max(prices[-252:]) - 1
         out["dd52w"] = dd
@@ -245,7 +264,7 @@ def main() -> None:
             "stale_today": points[-1][2],
         }
         for key in ("rsi14", "bb_pctb", "bb_width", "bb_squeeze", "sma200_gap", "dd52w",
-                    "s_rsi", "s_bb", "s_gap", "s_dd", "s_spx"):
+                    "s_rsi", "s_bb", "s_gap", "s_trend", "s_dd", "s_spx"):
             value = signal.get(key)
             row[key] = round(value, 4) if isinstance(value, float) else value
         for name, weights in PRESETS.items():
