@@ -100,9 +100,11 @@ def update_components(iex_dir: Path, path: Path) -> dict[str, dict[str, float]]:
         with path.open(encoding="utf-8") as f:
             for r in csv.DictReader(f):
                 saved[r["date"]] = {k: float(r[k]) for k in COMPONENTS if r.get(k)}
-    todo = {i for i, d in enumerate(dates) if d not in saved}
-    if todo:
-        start = max(0, min(todo) - 130)  # 창(63일 고저, 125일 평균)을 채우기 위한 준비 구간
+    missing = [i for i, d in enumerate(dates) if d not in saved]
+    if missing:
+        # 과거 날짜가 새로 채워졌으면 그 뒤 날짜들도 창이 달라지므로 모두 다시 계산한다
+        todo = set(range(missing[0], len(dates)))
+        start = max(0, missing[0] - 130)  # 창(63일 고저, 125일 평균)을 채우기 위한 준비 구간
         print(f"공포·탐욕 구성요소 계산: {len(todo)}일 (파일 {len(dates) - start}개 읽음)")
         etf = {x: {} for x in ETFS}
         highs_lows: dict[str, deque] = {}
