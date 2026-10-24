@@ -3,6 +3,7 @@
 최근 90일 동안 임원·이사 여러 명이 장내 매수할수록(클러스터 매수) 점수가 높다.
 - 같은 거래를 공동 보고자(펀드 그룹의 여러 법인 등)가 각자 공시하므로 같은 날·수량·가격은 1건으로 합친다
 - 10% 대주주의 매수, 미리 정해 둔 계획 매수(10b5-1)는 낮게 반영한다
+- 1인당 MIN_VALUE 미만은 이사회 보수의 주식 지급 등 제도성 매입일 가능성이 커서 매수자로 세지 않는다
 매수가 없는 종목은 점수를 비워 둔다 (매수가 없는 게 보통이라 '매도 쪽' 근거가 아님).
 """
 
@@ -12,6 +13,7 @@ from pathlib import Path
 
 WINDOW_DAYS = 90
 TOP_TITLES = ("CEO", "CHIEF EXECUTIVE", "CFO", "CHIEF FINANCIAL", "PRESIDENT")
+MIN_VALUE = 25_000  # 달러, 1인당 기간 합계
 
 
 def insider_signals(path: Path, asof: str) -> dict[str, dict]:
@@ -32,6 +34,12 @@ def insider_signals(path: Path, asof: str) -> dict[str, dict]:
 
     out = {}
     for ticker, rows in by_ticker.items():
+        per_owner: dict[str, float] = {}
+        for r in rows:
+            per_owner[r["owner"]] = per_owner.get(r["owner"], 0) + float(r["value"])
+        rows = [r for r in rows if per_owner[r["owner"]] >= MIN_VALUE]
+        if not rows:
+            continue
         voluntary = [r for r in rows if r["is_10b5_1"] != "True"]
         insiders = {r["owner"] for r in voluntary if r["is_officer"] == "True" or r["is_director"] == "True"}
         holders = {r["owner"] for r in voluntary if r["owner"] not in insiders}
