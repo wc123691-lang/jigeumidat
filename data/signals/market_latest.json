@@ -1,17 +1,17 @@
 {
- "date": "20261022",
- "fear_greed": 22.9,
+ "date": "20261023",
+ "fear_greed": 24.0,
  "fear_greed_label": "극단적 공포",
- "fear_greed_days": 450,
- "s_fg": 54.2,
- "volatility_pct": 19.8,
- "s_vix": -60.4,
+ "fear_greed_days": 2430,
+ "s_fg": 52.0,
+ "volatility_pct": 29.5,
+ "s_vix": -41.0,
  "t10y2y": 0.31,
  "t10y2y_date": "20261023",
  "usdkrw": 1324.45,
  "usdkrw_date": "20261023",
- "usdkrw_1y_avg": 1452.59,
- "s_fx": 88.2135,
- "spy_sma200_gap": 0.0515,
- "s_spx": 25.7388
+ "usdkrw_1y_avg": 1452.67,
+ "s_fx": 88.2624,
+ "spy_sma200_gap": 0.0453,
+ "s_spx": 22.6374
 }
