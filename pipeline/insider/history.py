@@ -10,7 +10,7 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
 
     python history.py
 
-출력: data/insider/by_ticker/<티커>.json
+출력: data/insider/by_ticker/<티커>.json (CON 같은 윈도우 예약 이름은 _CON.json)
   {"ticker", "issuer", "rows": [[거래일, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 거래 후 보유, 10b5-1 여부, 공시일], ...]}
   관계: D 이사, O 임원, T 10% 이상 주주 (여러 개면 붙여 씀). 최근 거래가 앞.
       data/insider/latest.json  최근 30일 공시 전체 (내부자 탭 첫 화면)
@@ -81,7 +81,8 @@ def quarter_rows(raw_zip: bytes) -> list[dict]:
         price = float(t["TRANS_PRICEPERSHARE"] or 0)
         # 이 거래에 달린 각주 중 10b5-1(미리 정해 둔 매매 계획)을 말하는 것이 있으면 계획 거래
         notes = {fid.strip() for k, v in t.items() if k.endswith("_FN") and v for fid in v.split(",")}
-        plan = sub["AFF10B5ONE"] in ("1", "true") or any((acc, fid) in plan_notes for fid in notes)
+        # 10b5-1 체크 칸(AFF10B5ONE)은 2023년 이전 데이터셋엔 없다
+        plan = sub.get("AFF10B5ONE") in ("1", "true") or any((acc, fid) in plan_notes for fid in notes)
         key = (acc, sec_date(t["TRANS_DATE"]), code)
         row = merged.get(key)
         if row is None:
@@ -163,6 +164,14 @@ def candidate_tickers(symbol: str, universe: set[str]) -> set[str]:
     return found
 
 
+# 윈도우에서 파일 이름으로 쓸 수 없는 이름(CON 등)은 앞에 _를 붙인다. 앱(src/domain/insider.ts)도 같은 규칙.
+RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM\d|LPT\d)$")
+
+
+def file_name(ticker: str) -> str:
+    return ("_" if RESERVED.match(ticker) else "") + ticker + ".json"
+
+
 def main() -> None:
     if not os.environ.get("SEC_USER_AGENT"):
         sys.exit("SEC_USER_AGENT 환경변수를 '앱이름 연락처이메일' 형식으로 설정하세요 (SEC 요구사항).")
@@ -200,7 +209,7 @@ def main() -> None:
             out.append([r["trade_date"], r["code"], r["owner"], r["role"], r["title"], round(shares, 4),
                         round(value / shares, 4), round(value), after, 1 if r["plan"] in (True, "True") else 0, r["filed"]])
         body = {"ticker": ticker, "issuer": trades[0]["issuer"], "rows": out}
-        path = OUT / f"{ticker}.json"
+        path = OUT / file_name(ticker)
         text = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         # 내용이 같으면 다시 쓰지 않아 매일 커밋이 바뀐 종목만 담게 한다
         if not path.exists() or path.read_text(encoding="utf-8") != text:
