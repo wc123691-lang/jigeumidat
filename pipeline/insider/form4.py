@@ -13,6 +13,7 @@ PC가 꺼져 있던 날은 다음 실행 때 몰아서 받는다.
 
 import argparse
 import csv
+import json
 import os
 import sys
 import time
@@ -47,8 +48,22 @@ def sec_get(url: str) -> bytes | None:
         raise
 
 
+_quarter_files: dict[str, set[str]] = {}
+
+
+def index_exists(day: date) -> bool:
+    """SEC는 없는 색인 파일(공휴일)에 404 대신 403을 주기도 해서, 분기 목록으로 실제 존재를 확인한다."""
+    quarter = DAILY_INDEX.format(y=day.year, q=(day.month - 1) // 3 + 1, d="").rsplit("/", 1)[0]
+    if quarter not in _quarter_files:
+        listing = json.loads(sec_get(quarter + "/index.json"))
+        _quarter_files[quarter] = {item["name"] for item in listing["directory"]["item"]}
+    return f"form.{day.strftime('%Y%m%d')}.idx" in _quarter_files[quarter]
+
+
 def form4_paths(day: date) -> list[str] | None:
     """그날 접수된 Form 4 (정정 포함) 공시 경로. 색인이 없는 날(휴일)은 None."""
+    if not index_exists(day):
+        return None
     raw = sec_get(DAILY_INDEX.format(y=day.year, q=(day.month - 1) // 3 + 1, d=day.strftime("%Y%m%d")))
     if raw is None:
         return None
