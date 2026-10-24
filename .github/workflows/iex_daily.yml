@@ -53,3 +53,16 @@ jobs:
             git pull --rebase
             git push
           fi
+      # 앱 내부자 화면 차트용 1년 종가. 매일 모든 파일이 바뀌므로 기록 없이 'prices' 브랜치에 덮어쓴다.
+      - name: Chart prices
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python pipeline/signals/export_prices.py "$RUNNER_TEMP/prices"
+          cd "$RUNNER_TEMP/prices"
+          git init -q -b prices
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Chart prices"
+          git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" prices
