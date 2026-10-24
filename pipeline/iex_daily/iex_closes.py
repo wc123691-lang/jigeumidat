@@ -23,8 +23,10 @@ import struct
 import sys
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from market_calendar import is_trading_day, previous_weekday
 
 HIST_LIST_API = "https://iextrading.com/api/1.0/hist"
 HIST_API = "https://iextrading.com/api/1.0/hist?date={date}"
@@ -207,7 +209,14 @@ def main() -> None:
     if args.date:
         date = args.date
     elif args.wait_new is not None:
-        date = wait_for_new_date(last_saved_date(args.out_dir), args.wait_new)
+        # 방금 끝난 미국 장(동부시간 기준 어제까지의 마지막 평일)이 휴장일이면 새 파일이 나오지 않으므로
+        # 몇 시간씩 기다리지 않고 지금 있는 것만 확인한다 (밀린 날짜가 있으면 그건 처리)
+        session = previous_weekday((datetime.now(timezone.utc) - timedelta(hours=5)).date())
+        hours = args.wait_new
+        if not is_trading_day(session):
+            print(f"{session}은 미국 증시 휴장일이라 새 파일을 기다리지 않습니다.")
+            hours = 0
+        date = wait_for_new_date(last_saved_date(args.out_dir), hours)
         if date is None:
             print("새 파일이 없습니다 (휴장일이거나 IEX 공개 지연). 종료합니다.")
             return
