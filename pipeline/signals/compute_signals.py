@@ -25,12 +25,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from insider import insider_signals
 from market import market_signals
 
 ROOT = Path(__file__).resolve().parents[2]
 IEX_DIR = ROOT / "data" / "iex"
 OUT_DIR = ROOT / "data" / "signals"
 DECISIONS_PATH = OUT_DIR / "split_decisions.csv"
+INSIDER_PATH = ROOT / "data" / "insider" / "purchases.csv"
 
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 SEC_SHARES = "https://data.sec.gov/api/xbrl/companyconcept/CIK{cik:010d}/dei/EntityCommonStockSharesOutstanding.json"
@@ -43,7 +45,7 @@ SHARES_TOLERANCE = 0.15  # 발행 주식 수 비율 허용 오차 (신주 발행
 STALE_MINUTES = 30  # 마지막 체결이 마감보다 이만큼 이르면 신뢰도 낮음
 LOOKBACK_DAYS = 300  # 종목별 지표(200일선, 52주)에 필요한 만큼만 읽는다
 
-# 시안 '내 신호 설정'의 프리셋 비중. 아직 없는 신호(내부자 매수 등)는 빠지고 남은 신호끼리 비중을 다시 나눈다.
+# 시안 '내 신호 설정'의 프리셋 비중. 값이 없는 신호(내부자 매수가 없는 종목 등)는 빠지고 남은 신호끼리 비중을 다시 나눈다.
 # vix 자리는 VIX 대신 SPY 실제 변동성(market.py)을 쓴다.
 PRESETS = {
     "steady": {"fg": 4, "vix": 2, "fx": 3, "spx": 3, "rsi": 2, "bb": 1, "gap": 3, "ins": 3, "dd": 4},
@@ -248,13 +250,14 @@ def main() -> None:
     spy = series.get("SPY", [])
     market, fg_history = market_signals(IEX_DIR, OUT_DIR, adjusted_prices("SPY", spy, splits))
     market_scores = {k: v for k, v in market.items() if k.startswith("s_")}
+    insider = insider_signals(INSIDER_PATH, date)
 
     rows = []
     for symbol, points in sorted(series.items()):
         if points[-1][0] != date:
             continue  # 기준일에 체결이 없던 종목
         prices = adjusted_prices(symbol, points, splits)
-        signal = {**market_scores, **scores(prices)}
+        signal = {**market_scores, **scores(prices), **insider.get(symbol, {})}
         row = {
             "date": date,
             "symbol": symbol,
@@ -263,7 +266,8 @@ def main() -> None:
             "stale_today": points[-1][2],
         }
         for key in ("rsi14", "bb_pctb", "bb_width", "bb_squeeze", "sma200_gap", "dd52w",
-                    "s_rsi", "s_bb", "s_gap", "s_trend", "s_dd"):
+                    "ins_buyers", "ins_value", "ins_last",
+                    "s_rsi", "s_bb", "s_gap", "s_trend", "s_dd", "s_ins"):
             value = signal.get(key)
             row[key] = round(value, 4) if isinstance(value, float) else value
         for name, weights in PRESETS.items():
@@ -287,6 +291,7 @@ def main() -> None:
             w.writerows(fg_history)
     print(f"기준일 {date} ({len(dates)}일치) · 종목 {len(rows):,}개 → {out}")
     print(f"시장: 공포·탐욕 {market.get('fear_greed')} ({market.get('fear_greed_label')}) → market_latest.json")
+    print(f"내부자 매수(최근 90일) 종목 {len(insider):,}개")
     print(f"분할·병합으로 보정 {len(splits)}건 → {DECISIONS_PATH}")
 
 
