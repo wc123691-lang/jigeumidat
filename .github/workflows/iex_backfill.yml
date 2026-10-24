@@ -1,22 +1,26 @@
 name: IEX backfill
 
 # 아직 저장 안 된 과거 날짜를 최신순으로 count개 골라 병렬 처리한 뒤 한 번에 커밋한다.
-# 여러 번 나눠 돌려도 이미 저장된 날짜는 건너뛴다.
+# 남은 날짜가 있으면 rounds가 0이 될 때까지 스스로 다음 회차를 실행한다.
 on:
   workflow_dispatch:
     inputs:
       count:
-        description: "이번에 처리할 날짜 수 (최대 250)"
-        default: "20"
+        description: "회차당 처리할 날짜 수 (최대 250)"
+        default: "250"
       parallel:
         description: "동시에 돌릴 작업 수"
-        default: "10"
+        default: "20"
+      rounds:
+        description: "이번 회차 포함 최대 반복 횟수"
+        default: "1"
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: iex-daily
+  group: iex-backfill
 
 jobs:
   plan:
@@ -48,6 +52,8 @@ jobs:
         date: ${{ fromJSON(needs.plan.outputs.dates) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: pipeline
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -59,8 +65,8 @@ jobs:
           retention-days: 1
 
   commit:
-    needs: fetch
-    if: always() && needs.fetch.result != 'skipped'
+    needs: [plan, fetch]
+    if: always() && needs.plan.outputs.dates != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +75,8 @@ jobs:
           pattern: iex-*
           path: data/iex
           merge-multiple: true
-      - run: |
+      - name: Commit
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/iex
@@ -79,4 +86,18 @@ jobs:
             git commit -m "IEX backfill: $(git diff --cached --name-only | wc -l) days"
             git pull --rebase
             git push
+          fi
+      - name: Next round
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUNDS: ${{ inputs.rounds }}
+          COUNT: ${{ inputs.count }}
+          PARALLEL: ${{ inputs.parallel }}
+        run: |
+          left=$(python3 pipeline/iex_daily/missing_dates.py 1 data/iex)
+          if [ "$left" != "[]" ] && [ "$ROUNDS" -gt 1 ]; then
+            gh workflow run iex_backfill.yml -f count="$COUNT" -f parallel="$PARALLEL" -f rounds="$((ROUNDS - 1))"
+            echo "다음 회차 실행 (남은 반복 $((ROUNDS - 1)))"
+          else
+            echo "종료 (남은 날짜: $left, 남은 반복: $ROUNDS)"
           fi

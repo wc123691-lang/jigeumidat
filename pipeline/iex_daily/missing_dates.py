@@ -8,13 +8,13 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from iex_closes import FEED, HIST_LIST_API
+from iex_closes import HIST_LIST_API, has_trades
 
 
 def main() -> None:
     count, out_dir = int(sys.argv[1]), Path(sys.argv[2])
     listing = json.load(urllib.request.urlopen(HIST_LIST_API, timeout=60))
-    available = sorted((d for d, files in listing.items() if any(f["feed"] == FEED for f in files)), reverse=True)
+    available = sorted((d for d, files in listing.items() if has_trades(d, files)), reverse=True)
     saved = {p.stem.removeprefix("iex_") for p in out_dir.glob("iex_????????.csv")}
     print(json.dumps([d for d in available if d not in saved][:count]))
 

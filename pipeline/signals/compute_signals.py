@@ -41,6 +41,7 @@ SPLIT_FACTORS = (2, 3, 4, 5, 10, 20)
 SPLIT_TOLERANCE = 0.015
 SHARES_TOLERANCE = 0.15  # 발행 주식 수 비율 허용 오차 (신주 발행 등)
 STALE_MINUTES = 30  # 마지막 체결이 마감보다 이만큼 이르면 신뢰도 낮음
+LOOKBACK_DAYS = 300  # 종목별 지표(200일선, 52주)에 필요한 만큼만 읽는다
 
 # 시안 '내 신호 설정'의 프리셋 비중. 아직 없는 신호(내부자 매수 등)는 빠지고 남은 신호끼리 비중을 다시 나눈다.
 # vix 자리는 VIX 대신 SPY 실제 변동성(market.py)을 쓴다.
@@ -65,9 +66,9 @@ def minutes_before_close(utc_hms: str, date: str) -> float:
 
 
 def load_closes(until: str):
-    """symbol -> [(date, price, stale)]"""
+    """최근 LOOKBACK_DAYS일치: symbol -> [(date, price, stale)]"""
     series: dict[str, list] = {}
-    files = sorted(p for p in IEX_DIR.glob("iex_????????.csv") if p.stem[4:] <= until)
+    files = sorted(p for p in IEX_DIR.glob("iex_????????.csv") if p.stem[4:] <= until)[-LOOKBACK_DAYS:]
     for path in files:
         date = path.stem[4:]
         with path.open(encoding="utf-8") as f:
@@ -244,18 +245,15 @@ def main() -> None:
     date = dates[-1]
 
     splits = resolve_splits(split_candidates(series))
-    adjusted = {
-        symbol: dict(zip((d for d, _, _ in points), adjusted_prices(symbol, points, splits)))
-        for symbol, points in series.items()
-    }
-    market, fg_history = market_signals(dates, adjusted)
+    spy = series.get("SPY", [])
+    market, fg_history = market_signals(IEX_DIR, OUT_DIR, adjusted_prices("SPY", spy, splits))
     market_scores = {k: v for k, v in market.items() if k.startswith("s_")}
 
     rows = []
     for symbol, points in sorted(series.items()):
         if points[-1][0] != date:
             continue  # 기준일에 체결이 없던 종목
-        prices = list(adjusted[symbol].values())
+        prices = adjusted_prices(symbol, points, splits)
         signal = {**market_scores, **scores(prices)}
         row = {
             "date": date,

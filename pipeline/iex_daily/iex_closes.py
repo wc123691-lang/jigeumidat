@@ -29,6 +29,7 @@ from pathlib import Path
 HIST_LIST_API = "https://iextrading.com/api/1.0/hist"
 HIST_API = "https://iextrading.com/api/1.0/hist?date={date}"
 FEED = "DEEP"  # 체결 기록은 TOPS와 같고, 여러 피드 중 가장 먼저 공개됨
+FALLBACK_FEED = "TOPS"  # DEEP이 없는 날(2017-05 이전 등)
 OUT_DIR = Path(__file__).parent / "output"
 
 TRADE_REPORT = 0x54  # 'T'
@@ -82,14 +83,36 @@ def feed_file(date: str) -> dict:
     files = json.load(urllib.request.urlopen(HIST_API.format(date=date), timeout=30))
     if not isinstance(files, list):
         sys.exit(f"{date} 파일이 아직 없습니다 (IEX는 다음 날 공개).")
-    file = next((f for f in files if f["feed"] == FEED), None)
+    by_feed = {f["feed"]: f for f in files}
+    file = by_feed.get(FEED) or by_feed.get(FALLBACK_FEED)
     if file is None:
-        sys.exit(f"{date} {FEED} 파일이 아직 없습니다.")
+        sys.exit(f"{date} {FEED}/{FALLBACK_FEED} 파일이 아직 없습니다.")
     return file
 
 
+def has_trades(date: str, files: list) -> bool:
+    """평일이고 체결이 담긴 피드가 있는 날 (IEX 목록에 섞인 주말 테스트 날짜 제외)."""
+    weekday = datetime.strptime(date, "%Y%m%d").weekday()
+    return weekday < 5 and any(f["feed"] in (FEED, FALLBACK_FEED) for f in files)
+
+
 def iter_packets(stream):
-    """pcapng에서 Enhanced Packet Block의 패킷 데이터를 꺼낸다."""
+    """패킷 데이터를 꺼낸다. 2017-08 이후 파일은 pcapng, 그 전 TOPS 파일은 예전 pcap 형식."""
+    magic = stream.read(4)
+    if magic == b"\xd4\xc3\xb2\xa1":  # pcap (little-endian)
+        stream.read(20)  # 나머지 전역 헤더
+        while True:
+            header = stream.read(16)
+            if len(header) < 16:
+                return
+            captured = struct.unpack_from("<I", header, 8)[0]
+            data = stream.read(captured)
+            if len(data) < captured:
+                return
+            yield memoryview(data)
+    # pcapng: 첫 블록(Section Header Block)의 타입 4바이트를 이미 읽었으므로 나머지를 건너뛴다
+    block_len = struct.unpack("<I", stream.read(4))[0]
+    stream.read(block_len - 8)
     while True:
         header = stream.read(8)
         if len(header) < 8:
