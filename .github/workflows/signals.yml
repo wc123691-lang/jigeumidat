@@ -1,0 +1,36 @@
+name: Signals
+
+# 저장된 IEX 종가로 신호만 다시 계산한다 (수집 없이). 매일 수집 작업에도 같은 단계가 들어 있다.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iex-daily
+
+jobs:
+  signals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compute signals
+        env:
+          SEC_USER_AGENT: "jigeumidat ${{ github.repository_owner }}@users.noreply.github.com"
+        run: python pipeline/signals/compute_signals.py
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/signals
+          if git diff --cached --quiet; then
+            echo "바뀐 신호 없음"
+          else
+            git commit -m "Signals $(head -2 data/signals/signals_latest.csv | tail -1 | cut -d, -f1)"
+            git pull --rebase
+            git push
+          fi

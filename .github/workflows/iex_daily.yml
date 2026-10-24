@@ -35,15 +35,19 @@ jobs:
           else
             python pipeline/iex_daily/iex_closes.py --out-dir data/iex --wait-new 5
           fi
+      - name: Compute signals
+        env:
+          SEC_USER_AGENT: "jigeumidat ${{ github.repository_owner }}@users.noreply.github.com"
+        run: python pipeline/signals/compute_signals.py
       - name: Commit result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/iex
+          git add data/iex data/signals
           if git diff --cached --quiet; then
             echo "저장할 새 파일 없음"
           else
-            git commit -m "IEX closes $(git diff --cached --name-only | sed 's/.*iex_//; s/.csv//' | tr '\n' ' ')"
+            git commit -m "IEX closes $(git diff --cached --name-only data/iex | sed 's/.*iex_//; s/.csv//' | tr '\n' ' ')"
             git pull --rebase
             git push
           fi
