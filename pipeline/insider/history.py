@@ -15,9 +15,12 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
 출력: data/insider/by_ticker/<티커>.json (CON 같은 윈도우 예약 이름은 _CON.json)
   {"ticker", "issuer", "rows": [[거래일, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 거래 후 보유, 10b5-1 여부, 공시일], ...]}
   관계: D 이사, O 임원, T 10% 이상 주주 (여러 개면 붙여 씀). 최근 거래가 앞.
-      data/insider/summary.json  종목별·기간별 합계 (내부자 탭 첫 화면, 거래일 기준)
-  {"asof", "periods": [30, 90, 180, 365],
-   "rows": [[티커, 회사, 마지막 매수일, 마지막 매도일, [기간마다: 매수액, 매수자 수, 매수 건수, 매도액, 매도자 수, 매도 건수, 계획 매도액] 또는 0], ...]}
+      data/insider/summary.json  종목별·사람 유형별·기간별 합계 (내부자 탭 첫 화면, 거래일 기준)
+  {"asof", "periods": [30, 90, 180, 365], "groups": ["all", "insider", "officer"],
+   "rows": [[티커, 회사, [유형마다: [마지막 매수일, 마지막 매도일, [기간마다: 매수액, 매수자 수, 매수 건수,
+             매도액, 매도자 수, 매도 건수, 계획 매도액, 최대 보유 증가율] 또는 0] 또는 0]], ...]}
+  유형: all 전체, insider 임원·이사(10% 대주주만인 법인·펀드 제외), officer 임원만.
+  보유 증가율: 매수 한 건의 주식 수 / 거래 전 보유(거래 후 보유 − 매수 주식 수). 거래 전 보유가 0이면 신규 매수로 보고 MAX_GROWTH.
 """
 
 import csv
@@ -38,6 +41,8 @@ INSIDER = ROOT / "data" / "insider"
 OUT = INSIDER / "by_ticker"
 SUMMARY = INSIDER / "summary.json"
 PERIODS = (30, 90, 180, 365)  # 앱의 1개월·3개월·6개월·1년
+GROUPS = {"all": lambda role: True, "insider": lambda role: "O" in role or "D" in role, "officer": lambda role: "O" in role}
+MAX_GROWTH = 10.0  # 보유 증가율 상한 (1000%). 신규 매수도 이 값
 CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
 IEX = ROOT / "data" / "iex"
@@ -215,6 +220,17 @@ def plausible(r: dict, ticker: str) -> bool:
     return close is None or 1 / PRICE_TOLERANCE <= (value / shares) / close <= PRICE_TOLERANCE
 
 
+def holding_growth(r: dict) -> float | None:
+    """매수로 보유 주식이 몇 배 늘었나 (0.25 = 25% 증가). 거래 후 보유를 모르거나 앞뒤가 안 맞으면 None."""
+    if not r["shares_after"]:
+        return None
+    shares, after = float(r["shares"]), float(r["shares_after"])
+    before = after - shares
+    if before < -0.5:
+        return None  # 직접·간접 보유 줄이 섞여 거래 후 보유가 매수량보다 작은 경우
+    return MAX_GROWTH if before < 1 else min(MAX_GROWTH, shares / before)
+
+
 def main() -> None:
     if not os.environ.get("SEC_USER_AGENT"):
         sys.exit("SEC_USER_AGENT 환경변수를 '앱이름 연락처이메일' 형식으로 설정하세요 (SEC 요구사항).")
@@ -274,26 +290,34 @@ def main() -> None:
         if stale.name not in written:
             stale.unlink()
 
-    # 내부자 탭 첫 화면: 종목별로 기간마다 매수·매도 합계. 한 회사의 여러 클래스(BF.A·BF.B)는 대표 티커 하나로만 센다.
+    # 내부자 탭 첫 화면: 종목별로 사람 유형·기간마다 매수·매도 합계. 한 회사의 여러 클래스(BF.A·BF.B)는 대표 티커 하나로만 센다.
     since = [(date.today() - timedelta(days=d)).isoformat() for d in PERIODS]
+    value = lambda rs: round(sum(float(r["value"]) for r in rs))
     summary = []
     for cik, ticker in sorted(ticker_of.items(), key=lambda x: x[1]):
         recent = [r for r in by_cik[cik] if r["trade_date"] >= since[-1]]
         if not recent:
             continue
-        stats = []
-        for start in since:
-            s = [r for r in recent if r["trade_date"] >= start]
-            buys = [r for r in s if r["code"] == "P"]
-            sells = [r for r in s if r["code"] == "S"]
-            value = lambda rs: round(sum(float(r["value"]) for r in rs))
-            stats.append([value(buys), len({r["owner"] for r in buys}), len(buys),
-                          value(sells), len({r["owner"] for r in sells}), len(sells),
-                          value([r for r in sells if r["plan"] in (True, "True")])] if s else 0)
-        last = lambda code: max((r["trade_date"] for r in recent if r["code"] == code), default="")
-        summary.append([ticker, max(recent, key=lambda r: r["filed"])["issuer"], last("P"), last("S"), stats])
-    SUMMARY.write_text(json.dumps({"asof": today, "periods": list(PERIODS), "rows": summary}, ensure_ascii=False,
-                                  separators=(",", ":")), encoding="utf-8")
+        groups = []
+        for keep in GROUPS.values():
+            mine = [r for r in recent if keep(r["role"])]
+            if not mine:
+                groups.append(0)
+                continue
+            stats = []
+            for start in since:
+                s = [r for r in mine if r["trade_date"] >= start]
+                buys = [r for r in s if r["code"] == "P"]
+                sells = [r for r in s if r["code"] == "S"]
+                growth = max((g for g in map(holding_growth, buys) if g is not None), default=0)
+                stats.append([value(buys), len({r["owner"] for r in buys}), len(buys),
+                              value(sells), len({r["owner"] for r in sells}), len(sells),
+                              value([r for r in sells if r["plan"] in (True, "True")]), round(growth, 4)] if s else 0)
+            last = lambda code: max((r["trade_date"] for r in mine if r["code"] == code), default="")
+            groups.append([last("P"), last("S"), stats])
+        summary.append([ticker, max(recent, key=lambda r: r["filed"])["issuer"], groups])
+    SUMMARY.write_text(json.dumps({"asof": today, "periods": list(PERIODS), "groups": list(GROUPS), "rows": summary},
+                                  ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     old_feed = INSIDER / "latest.json"  # 예전 첫 화면 파일 (최근 30일 공시 목록)
     if old_feed.exists():
         old_feed.unlink()
