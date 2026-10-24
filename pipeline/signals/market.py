@@ -157,12 +157,21 @@ def usd_krw(start: str) -> dict[str, float]:
 
 def market_signals(iex_dir: Path, out_dir: Path, spy_recent: list[float]) -> tuple[dict, list[dict]]:
     """(최신 시장 신호, 공포·탐욕 지수 이력). 점수는 +가 매수 쪽. spy_recent는 분할 보정된 최근 SPY 종가."""
-    history = fear_greed_history(update_components(iex_dir, out_dir / "fg_components.csv"))
+    components = update_components(iex_dir, out_dir / "fg_components.csv")
+    history = fear_greed_history(components)
     latest: dict = {}
     if history:
         fg = history[-1]
         latest.update(date=fg["date"], fear_greed=fg["fear_greed"], fear_greed_label=fear_greed_label(fg["fear_greed"]),
                       fear_greed_days=len(history))
+        # 홈 화면 카드용 원값 (백분위가 아닌 실제 값)
+        raw = components[fg["date"]]
+        if "breadth" in raw:
+            latest["breadth_above_sma50"] = raw["breadth"]  # 50일선 위 종목 비율
+        if "volatility" in raw:
+            latest["spy_volatility_20d"] = -raw["volatility"]  # 연율화 변동성 (저장은 부호 반전)
+            vols = sorted(-c["volatility"] for c in components.values() if "volatility" in c)
+            latest["spy_volatility_median"] = statistics.median(vols)
         latest["s_fg"] = clamp((50 - fg["fear_greed"]) * 2)  # 공포일수록 매수 쪽
         if "volatility" in fg:
             latest["volatility_pct"] = 100 - fg["volatility"]  # 변동성이 과거 대비 높은 정도

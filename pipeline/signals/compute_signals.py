@@ -290,6 +290,9 @@ def main() -> None:
                                for k in fields] for r in rows},
     }
     (OUT_DIR / "scores_latest.json").write_text(json.dumps(compact, separators=(",", ":")), encoding="utf-8")
+    spy_row = next((r for r in rows if r["symbol"] == "SPY"), None)
+    if spy_row and spy_row.get("rsi14") is not None:
+        market["spy_rsi14"] = spy_row["rsi14"]
     (OUT_DIR / "market_latest.json").write_text(
         json.dumps({k: round(v, 4) if isinstance(v, float) else v for k, v in market.items()},
                    ensure_ascii=False, indent=1), encoding="utf-8")

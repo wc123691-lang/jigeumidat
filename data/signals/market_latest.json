@@ -3,6 +3,9 @@
  "fear_greed": 24.0,
  "fear_greed_label": "극단적 공포",
  "fear_greed_days": 2430,
+ "breadth_above_sma50": 0.3432,
+ "spy_volatility_20d": 0.0953,
+ "spy_volatility_median": 0.1214,
  "s_fg": 52.0,
  "volatility_pct": 29.5,
  "s_vix": -41.0,
@@ -13,5 +16,6 @@
  "usdkrw_1y_avg": 1452.67,
  "s_fx": 88.2624,
  "spy_sma200_gap": 0.0453,
- "s_spx": 22.6374
+ "s_spx": 22.6374,
+ "spy_rsi14": 42.0193
 }
