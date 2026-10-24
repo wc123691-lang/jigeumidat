@@ -25,6 +25,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from market import market_signals
+
 ROOT = Path(__file__).resolve().parents[2]
 IEX_DIR = ROOT / "data" / "iex"
 OUT_DIR = ROOT / "data" / "signals"
@@ -40,8 +42,8 @@ SPLIT_TOLERANCE = 0.015
 SHARES_TOLERANCE = 0.15  # 발행 주식 수 비율 허용 오차 (신주 발행 등)
 STALE_MINUTES = 30  # 마지막 체결이 마감보다 이만큼 이르면 신뢰도 낮음
 
-# 시안 '내 신호 설정'의 프리셋 비중. 아직 없는 신호(공포탐욕, VIX, 환율, 내부자)는 빠지고
-# 남은 신호끼리 비중을 다시 나눈다.
+# 시안 '내 신호 설정'의 프리셋 비중. 아직 없는 신호(내부자 매수 등)는 빠지고 남은 신호끼리 비중을 다시 나눈다.
+# vix 자리는 VIX 대신 SPY 실제 변동성(market.py)을 쓴다.
 PRESETS = {
     "steady": {"fg": 4, "vix": 2, "fx": 3, "spx": 3, "rsi": 2, "bb": 1, "gap": 3, "ins": 3, "dd": 4},
     "contra": {"fg": 5, "vix": 4, "fx": 2, "spx": 1, "rsi": 4, "bb": 1, "gap": 2, "ins": 4, "dd": 5},
@@ -242,20 +244,19 @@ def main() -> None:
     date = dates[-1]
 
     splits = resolve_splits(split_candidates(series))
-    market = {}
-    spy = series.get("SPY")
-    if spy:
-        spy_prices = adjusted_prices("SPY", spy, splits)
-        if len(spy_prices) >= 200:
-            spy_gap = spy_prices[-1] / statistics.fmean(spy_prices[-200:]) - 1
-            market["s_spx"] = clamp(spy_gap * 500)  # 시장이 200일선 위면 매수 쪽 (추세)
+    adjusted = {
+        symbol: dict(zip((d for d, _, _ in points), adjusted_prices(symbol, points, splits)))
+        for symbol, points in series.items()
+    }
+    market, fg_history = market_signals(dates, adjusted)
+    market_scores = {k: v for k, v in market.items() if k.startswith("s_")}
 
     rows = []
     for symbol, points in sorted(series.items()):
         if points[-1][0] != date:
             continue  # 기준일에 체결이 없던 종목
-        prices = adjusted_prices(symbol, points, splits)
-        signal = {**market, **scores(prices)}
+        prices = list(adjusted[symbol].values())
+        signal = {**market_scores, **scores(prices)}
         row = {
             "date": date,
             "symbol": symbol,
@@ -264,7 +265,7 @@ def main() -> None:
             "stale_today": points[-1][2],
         }
         for key in ("rsi14", "bb_pctb", "bb_width", "bb_squeeze", "sma200_gap", "dd52w",
-                    "s_rsi", "s_bb", "s_gap", "s_trend", "s_dd", "s_spx"):
+                    "s_rsi", "s_bb", "s_gap", "s_trend", "s_dd"):
             value = signal.get(key)
             row[key] = round(value, 4) if isinstance(value, float) else value
         for name, weights in PRESETS.items():
@@ -278,7 +279,16 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
+    (OUT_DIR / "market_latest.json").write_text(
+        json.dumps({k: round(v, 4) if isinstance(v, float) else v for k, v in market.items()},
+                   ensure_ascii=False, indent=1), encoding="utf-8")
+    if fg_history:
+        with (OUT_DIR / "fear_greed_history.csv").open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(fg_history[-1]))
+            w.writeheader()
+            w.writerows(fg_history)
     print(f"기준일 {date} ({len(dates)}일치) · 종목 {len(rows):,}개 → {out}")
+    print(f"시장: 공포·탐욕 {market.get('fear_greed')} ({market.get('fear_greed_label')}) → market_latest.json")
     print(f"분할·병합으로 보정 {len(splits)}건 → {DECISIONS_PATH}")
 
 
