@@ -13,6 +13,8 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
 출력: data/insider/by_ticker/<티커>.json
   {"ticker", "issuer", "rows": [[거래일, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 거래 후 보유, 10b5-1 여부, 공시일], ...]}
   관계: D 이사, O 임원, T 10% 이상 주주 (여러 개면 붙여 씀). 최근 거래가 앞.
+      data/insider/latest.json  최근 30일 공시 전체 (내부자 탭 첫 화면)
+  {"days", "rows": [[공시일, 거래일, 티커, 코드, 이름, 관계, 직책, 주식수, 평균가격, 금액, 10b5-1 여부], ...]}
 """
 
 import csv
@@ -25,12 +27,14 @@ import time
 import urllib.request
 import zipfile
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 INSIDER = ROOT / "data" / "insider"
 OUT = INSIDER / "by_ticker"
+LATEST = INSIDER / "latest.json"
+LATEST_DAYS = 30
 CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
 LISTING = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
@@ -205,6 +209,19 @@ def main() -> None:
     for stale in OUT.glob("*.json"):
         if stale.name not in written:
             stale.unlink()
+
+    # 내부자 탭 첫 화면: 전체 종목의 최근 공시 목록 (공시일 최신순)
+    ticker_of: dict[str, str] = {}
+    for ticker, (_, cik) in sorted(claims.items()):
+        ticker_of.setdefault(cik, ticker)
+    since = (date.today() - timedelta(days=LATEST_DAYS)).isoformat()
+    latest = sorted((r for r in rows.values() if r["filed"] >= since and r["issuer_cik"] in ticker_of
+                     and r["trade_date"] >= first_day and float(r["shares"]) > 0),
+                    key=lambda r: (r["filed"], float(r["value"])), reverse=True)
+    feed = [[r["filed"], r["trade_date"], ticker_of[r["issuer_cik"]], r["code"], r["owner"], r["role"], r["title"],
+             round(float(r["shares"]), 4), round(float(r["value"]) / float(r["shares"]), 4), round(float(r["value"])),
+             1 if r["plan"] in (True, "True") else 0] for r in latest]
+    LATEST.write_text(json.dumps({"days": LATEST_DAYS, "rows": feed}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"{today} 종목 {len(written)}개 내부자 거래 내역 저장")
 
 
