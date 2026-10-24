@@ -20,7 +20,8 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
    "rows": [[티커, 회사, [유형마다: [마지막 매수일, 마지막 매도일, [기간마다: 매수액, 매수자 수, 매수 건수,
              매도액, 매도자 수, 매도 건수, 계획 매도액, 최대 보유 증가율] 또는 0] 또는 0]], ...]}
   유형: all 전체, insider 임원·이사(10% 대주주만인 법인·펀드 제외), officer 임원만.
-  보유 증가율: 매수 한 건의 주식 수 / 거래 전 보유(거래 후 보유 − 매수 주식 수). 거래 전 보유가 0이면 신규 매수로 보고 MAX_GROWTH.
+  보유 증가율: 매수 한 건의 주식 수 / 거래 전 보유(거래 후 보유 − 매수 주식 수), 최대 MAX_GROWTH.
+  거래 전 보유가 0인 신규 매수(상장 때 처음 배정받는 경우 등)는 증가율 비교에서 뺀다 (모두 '무한대'가 되어 순위를 덮는다).
 """
 
 import csv
@@ -42,7 +43,7 @@ OUT = INSIDER / "by_ticker"
 SUMMARY = INSIDER / "summary.json"
 PERIODS = (30, 90, 180, 365)  # 앱의 1개월·3개월·6개월·1년
 GROUPS = {"all": lambda role: True, "insider": lambda role: "O" in role or "D" in role, "officer": lambda role: "O" in role}
-MAX_GROWTH = 10.0  # 보유 증가율 상한 (1000%). 신규 매수도 이 값
+MAX_GROWTH = 10.0  # 보유 증가율 상한 (10배)
 CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
 IEX = ROOT / "data" / "iex"
@@ -221,14 +222,14 @@ def plausible(r: dict, ticker: str) -> bool:
 
 
 def holding_growth(r: dict) -> float | None:
-    """매수로 보유 주식이 몇 배 늘었나 (0.25 = 25% 증가). 거래 후 보유를 모르거나 앞뒤가 안 맞으면 None."""
+    """매수로 보유 주식이 몇 배 늘었나 (0.25 = 25% 증가). 거래 후 보유를 모르거나, 앞뒤가 안 맞거나, 신규 매수면 None."""
     if not r["shares_after"]:
         return None
     shares, after = float(r["shares"]), float(r["shares_after"])
     before = after - shares
     if before < -0.5:
         return None  # 직접·간접 보유 줄이 섞여 거래 후 보유가 매수량보다 작은 경우
-    return MAX_GROWTH if before < 1 else min(MAX_GROWTH, shares / before)
+    return None if before < 1 else min(MAX_GROWTH, shares / before)
 
 
 def main() -> None:
