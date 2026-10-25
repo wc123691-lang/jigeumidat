@@ -20,6 +20,8 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
    "rows": [[티커, 회사, [유형마다: [마지막 매수일, 마지막 매도일, [기간마다: 매수액, 매수자 수, 매수 건수,
              매도액, 매도자 수, 매도 건수, 계획 매도액, 최대 보유 증가율] 또는 0] 또는 0]], ...]}
   유형: all 전체, insider 임원·이사(10% 대주주만인 법인·펀드 제외), officer 임원만.
+  시가총액(달러, 모르면 0): 각 행 끝. SEC 발행주식수(dei EntityCommonStockSharesOutstanding, 없으면
+  us-gaap 가중평균 발행주식수) × 최근 IEX 종가. 본사가 미국 밖이면 0 (본국 주식 수 × 미국 예탁증서 가격이 되어 틀린다).
   보유 증가율: 매수 한 건의 주식 수 / 거래 전 보유(거래 후 보유 − 매수 주식 수), 최대 MAX_GROWTH.
   거래 전 보유가 0인 신규 매수(상장 때 처음 배정받는 경우 등)는 증가율 비교에서 뺀다 (모두 '무한대'가 되어 순위를 덮는다).
 """
@@ -48,6 +50,8 @@ CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
 IEX = ROOT / "data" / "iex"
 PRICE_TOLERANCE = 3  # 공시 가격 / 종가가 1/3 ~ 3배 밖이면 뺀다
+FRAMES = "https://data.sec.gov/api/xbrl/frames/{concept}/shares/{period}.json"
+SHARES_MAX_AGE = 550  # 발행주식수가 이보다 오래된 값(일)이면 쓰지 않는다
 LISTING = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
 FIRST_QUARTER = "2021q4"  # 최근 5년
 CODES = ("P", "S")
@@ -232,6 +236,49 @@ def holding_growth(r: dict) -> float | None:
     return None if before < 1 else min(MAX_GROWTH, shares / before)
 
 
+def recent_quarters(n: int) -> list[str]:
+    """최근 n개 분기 (CY2026Q3 형식, 최신이 앞)."""
+    y, q = date.today().year, (date.today().month - 1) // 3 + 1
+    out = []
+    for _ in range(n):
+        out.append(f"CY{y}Q{q}")
+        y, q = (y - 1, 4) if q == 1 else (y, q - 1)
+    return out
+
+
+def shares_outstanding() -> dict[str, int]:
+    """CIK → 발행주식수. 회사마다 가장 최근 값. 클래스가 여러 개라 표지 값이 없는 회사(GOOGL 등)는 가중평균으로."""
+    def latest(concept: str, periods: list[str]) -> dict[str, dict]:
+        best: dict[str, dict] = {}
+        for period in periods:
+            try:
+                data = json.loads(sec_get(FRAMES.format(concept=concept, period=period)))["data"]
+            except Exception as e:  # 아직 없는 분기(404) 등
+                print(f"  발행주식수 {concept} {period} 건너뜀: {e}", file=sys.stderr)
+                continue
+            for x in data:
+                cik = str(x["cik"])
+                if cik not in best or x["end"] > best[cik]["end"]:
+                    best[cik] = x
+        return best
+
+    quarters = recent_quarters(8)
+    cover = latest("dei/EntityCommonStockSharesOutstanding", [q + "I" for q in quarters])
+    wavg = latest("us-gaap/WeightedAverageNumberOfSharesOutstandingBasic", quarters[:5])
+    oldest = (date.today() - timedelta(days=SHARES_MAX_AGE)).isoformat()
+    out = {}
+    for cik in set(cover) | set(wavg):
+        x = cover.get(cik) or wavg[cik]
+        if x["end"] >= oldest and str(x.get("loc", "")).startswith("US") and x["val"] > 0:
+            out[cik] = int(x["val"])
+    return out
+
+
+def latest_close(ticker: str) -> float | None:
+    newest = max(p.stem[4:] for p in IEX.glob("iex_????????.csv"))
+    return close_near(f"{newest[:4]}-{newest[4:6]}-{newest[6:]}", ticker)
+
+
 def main() -> None:
     if not os.environ.get("SEC_USER_AGENT"):
         sys.exit("SEC_USER_AGENT 환경변수를 '앱이름 연락처이메일' 형식으로 설정하세요 (SEC 요구사항).")
@@ -295,6 +342,7 @@ def main() -> None:
     since = [(date.today() - timedelta(days=d)).isoformat() for d in PERIODS]
     value = lambda rs: round(sum(float(r["value"]) for r in rs))
     summary = []
+    shares = shares_outstanding()
     for cik, ticker in sorted(ticker_of.items(), key=lambda x: x[1]):
         recent = [r for r in by_cik[cik] if r["trade_date"] >= since[-1]]
         if not recent:
@@ -316,7 +364,9 @@ def main() -> None:
                               value([r for r in sells if r["plan"] in (True, "True")]), round(growth, 4)] if s else 0)
             last = lambda code: max((r["trade_date"] for r in mine if r["code"] == code), default="")
             groups.append([last("P"), last("S"), stats])
-        summary.append([ticker, max(recent, key=lambda r: r["filed"])["issuer"], groups])
+        close = latest_close(ticker) if cik in shares else None
+        market_cap = round(shares[cik] * close) if close else 0
+        summary.append([ticker, max(recent, key=lambda r: r["filed"])["issuer"], groups, market_cap])
     SUMMARY.write_text(json.dumps({"asof": today, "periods": list(PERIODS), "groups": list(GROUPS), "rows": summary},
                                   ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     old_feed = INSIDER / "latest.json"  # 예전 첫 화면 파일 (최근 30일 공시 목록)
