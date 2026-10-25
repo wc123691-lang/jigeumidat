@@ -53,6 +53,12 @@ jobs:
             git pull --rebase
             git push
           fi
+      # 내 신호 푸시 알림: 기준을 새로 넘은 종목을 사용자마다 묶어 보낸다 (Secrets가 없으면 건너뜀)
+      - name: Send signal alerts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python pipeline/alerts/send_alerts.py
       # 앱 내부자 화면 차트용 1년 종가. 매일 모든 파일이 바뀌므로 기록 없이 'prices' 브랜치에 덮어쓴다.
       - name: Chart prices
         env:
