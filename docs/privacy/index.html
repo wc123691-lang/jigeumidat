@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>지금이닷 개인정보처리방침</title>
+<style>
+  :root { --bg: #ffffff; --text: #1a1d24; --sub: #5b616d; --line: #e3e5e9; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --text: #f2f3f5; --sub: #a0a6b1; --line: #343a46; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; line-height: 1.7; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 32px 0 8px; }
+  p, li { font-size: 15px; }
+  .sub { color: var(--sub); font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--sub); font-weight: 600; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>지금이닷 개인정보처리방침</h1>
+  <p class="sub">시행일: 2026년 11월 1일</p>
+
+  <p>지금이닷(이하 "앱")은 이용자의 투자 기록을 이용자의 휴대폰 안에만 보관하는 것을 원칙으로 합니다. 이 방침은 앱이 어떤 정보를 어디에 저장하고, 무엇을 위해 쓰는지 설명합니다.</p>
+
+  <h2>1. 휴대폰에만 저장하는 정보</h2>
+  <p>다음 정보는 이용자의 휴대폰 안에만 저장되며, 앱 운영자를 포함한 누구에게도 전송되지 않습니다.</p>
+  <ul>
+    <li>매매일지: 종목, 매수·매도 날짜, 가격, 수량, 매수 이유, 메모, 기분, 목표가·손절가</li>
+    <li>내 신호 설정, 앱 잠금 설정</li>
+    <li>앱 잠금의 지문·얼굴 인식은 휴대폰 운영체제가 처리하며, 앱은 생체 정보에 접근하거나 저장하지 않습니다.</li>
+  </ul>
+  <p>앱을 삭제하면 이 정보도 함께 삭제됩니다. 이용자가 직접 '백업 파일 만들기'나 'CSV 내보내기'를 한 경우, 그 파일은 이용자가 선택한 곳에 저장되고 관리됩니다.</p>
+
+  <h2>2. 알림을 켰을 때만 서버에 보내는 정보</h2>
+  <p>설정에서 푸시 알림을 켠 경우에 한해, 알림을 보내기 위해 다음 정보를 서버(Supabase)에 보관합니다.</p>
+  <table>
+    <tr><th>항목</th><th>이유</th></tr>
+    <tr><td>익명 사용자 식별자 (이름·이메일·전화번호 없음)</td><td>이용자별 알림 설정을 구분하기 위해</td></tr>
+    <tr><td>푸시 토큰, 기기 종류(Android/iOS)</td><td>이 휴대폰으로 알림을 보내기 위해</td></tr>
+    <tr><td>알림 받을 종목 목록과 보유 여부</td><td>그 종목의 신호·내부자 거래를 확인하기 위해</td></tr>
+    <tr><td>내 신호 설정 (비중, 기준선)</td><td>이용자의 기준으로 점수를 계산하기 위해</td></tr>
+    <tr><td>종목별 마지막 알림 상태</td><td>같은 알림을 반복해서 보내지 않기 위해</td></tr>
+  </table>
+  <p>매매 가격, 수량, 메모, 기분은 서버로 보내지 않습니다. 알림 내용은 Expo 푸시 서비스와 Google Firebase Cloud Messaging(Android), Apple Push Notification service(iOS)를 거쳐 전달됩니다. 모든 전송은 암호화(HTTPS)됩니다.</p>
+
+  <h2>3. 공개 데이터 조회</h2>
+  <p>앱은 시세·신호·내부자 거래 정보를 공개된 데이터 저장소(GitHub)에서 내려받습니다. 이때 이용자를 식별하는 정보는 보내지 않습니다.</p>
+
+  <h2>4. 보관 기간과 삭제</h2>
+  <ul>
+    <li>알림을 끄면 서버의 종목 목록이 즉시 비워집니다.</li>
+    <li>서버에 남은 알림 정보 전체의 삭제를 원하면 아래 연락처로 요청해 주세요. 요청을 받은 날부터 7일 안에 삭제합니다.</li>
+    <li>앱은 광고, 분석 도구, 위치 정보를 사용하지 않으며, 수집한 정보를 판매하거나 제3자에게 제공하지 않습니다.</li>
+  </ul>
+
+  <h2>5. 아동의 개인정보</h2>
+  <p>앱은 만 14세 미만 아동을 대상으로 하지 않습니다.</p>
+
+  <h2>6. 문의</h2>
+  <p>개인정보 관련 문의: <a href="mailto:jigeumidat.app@gmail.com">jigeumidat.app@gmail.com</a></p>
+  <p>이 방침이 바뀌면 앱과 이 페이지를 통해 알립니다.</p>
+</main>
+</body>
+</html>
