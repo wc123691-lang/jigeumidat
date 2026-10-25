@@ -19,7 +19,8 @@ SEC가 GitHub Actions 접속을 막아 사용자 PC에서 form4.py 다음에 실
   {"asof", "periods": [30, 90, 180, 365], "groups": ["all", "insider", "officer"],
    "rows": [[티커, 회사, [유형마다: [마지막 매수일, 마지막 매도일, [기간마다: 매수액, 매수자 수, 매수 건수,
              매도액, 매도자 수, 매도 건수, 계획 매도액, 최대 보유 증가율] 또는 0] 또는 0]], ...]}
-  유형: all 전체, insider 임원·이사(10% 대주주만인 법인·펀드 제외), officer 임원만.
+  유형: all 전체, insider 임원·이사(10% 대주주만인 법인·펀드 제외), officer 임원만, holder 대주주만(임원·이사를 겸하지 않는 10% 이상 주주).
+  앱은 이 순서로 위치를 읽으니 새 유형은 뒤에 붙인다.
   시가총액(달러, 모르면 0): 각 행 끝. SEC 발행주식수(dei EntityCommonStockSharesOutstanding, 없으면
   us-gaap 가중평균 발행주식수) × 최근 IEX 종가. 본사가 미국 밖이면 0 (본국 주식 수 × 미국 예탁증서 가격이 되어 틀린다).
   보유 증가율: 매수 한 건의 주식 수 / 거래 전 보유(거래 후 보유 − 매수 주식 수), 최대 MAX_GROWTH.
@@ -44,7 +45,8 @@ INSIDER = ROOT / "data" / "insider"
 OUT = INSIDER / "by_ticker"
 SUMMARY = INSIDER / "summary.json"
 PERIODS = (30, 90, 180, 365)  # 앱의 1개월·3개월·6개월·1년
-GROUPS = {"all": lambda role: True, "insider": lambda role: "O" in role or "D" in role, "officer": lambda role: "O" in role}
+GROUPS = {"all": lambda role: True, "insider": lambda role: "O" in role or "D" in role, "officer": lambda role: "O" in role,
+          "holder": lambda role: "T" in role and "O" not in role and "D" not in role}
 MAX_GROWTH = 10.0  # 보유 증가율 상한 (10배)
 CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
