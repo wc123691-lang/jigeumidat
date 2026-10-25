@@ -6,6 +6,12 @@
 - 같은 신호 날짜로 다시 돌면 보내지 않는다 (휴장일·재실행).
 내 신호 공식은 앱(src/signals.ts mySignal, rsiScore)과 같다: 값이 있는 신호끼리 비중으로 가중 평균.
 
+내부자 거래 알림도 같이 보낸다 (별도 푸시): 사용자가 지켜보는 종목(보유·전용 신호·시뮬레이션해 본 종목)에
+지난 실행 뒤 새로 공시된 내부자 장내 매수를 묶어 알린다. 매도는 사용자가 켰을 때만, 계획 매도(10b5-1)는 빼고.
+- 종목 항목의 "signal"(내 신호 알림 대상)·"insider"("buy" / "all" / 없음)로 고른다. 예전 앱이 올린 항목은 signal만.
+- 사용자마다 '어디까지 알렸나'(마지막 공시일)는 alert_state의 '__insider__' 줄에 둔다 (표를 새로 만들지 않으려고).
+  처음에는 기준만 기록하고 알리지 않는다.
+
 공개 저장소이므로 로그에는 개수만 남기고 사용자 정보는 찍지 않는다.
 비밀 키는 GitHub Secrets(SUPABASE_URL, SUPABASE_SECRET_KEY)로만 받는다. 없으면 아무것도 하지 않고 끝낸다.
 
@@ -24,6 +30,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SIGNALS = ROOT / "data" / "signals"
+INSIDER = ROOT / "data" / "insider" / "by_ticker"
+INSIDER_KEY = "__insider__"
 EXPO_PUSH = "https://exp.host/--/api/v2/push/send"
 PAGE = 1000
 FIELD_TO_KEY = {"s_rsi": "rsi", "s_bb": "bb", "s_gap": "gap", "s_trend": "trend", "s_dd": "dd", "s_ins": "ins",
@@ -62,6 +70,29 @@ def components_for(symbol: str, scores: dict, market: dict, settings: dict) -> d
         if isinstance(market.get(field), (int, float)):
             out[key] = market[field]
     return out
+
+
+def insider_file(ticker: str) -> Path:
+    """윈도우 예약 이름 티커(CON 등)는 _CON.json (pipeline/insider/history.py와 같은 규칙)."""
+    reserved = ticker in ("CON", "PRN", "AUX", "NUL") or (len(ticker) == 4 and ticker[:3] in ("COM", "LPT") and ticker[3].isdigit())
+    return INSIDER / (("_" if reserved else "") + ticker + ".json")
+
+
+def compact_usd(v: float) -> str:
+    return f"${v / 1e9:.1f}B" if v >= 1e9 else f"${v / 1e6:.1f}M" if v >= 1e6 else f"${v / 1e3:.0f}K" if v >= 1e3 else f"${v:.0f}"
+
+
+def insider_hits(rows: list, after: str, mode: str) -> list[str]:
+    """after(공시일) 뒤 새로 공시된 장내 매수(그리고 mode == 'all'이면 계획 매도가 아닌 매도) 요약.
+    rows: by_ticker 형식 [거래일, 코드, 이름, 관계, 직책, 주식수, 가격, 금액, 거래 후 보유, 10b5-1, 공시일]"""
+    out = []
+    for code, word in (("P", "매수"), ("S", "매도")):
+        if code == "S" and mode != "all":
+            continue
+        new = [r for r in rows if r[1] == code and r[10] > after and not (code == "S" and r[9])]
+        if new:
+            out.append((word, len({r[2] for r in new}), sum(r[7] for r in new)))
+    return [f"내부자 {w} {n}명 {compact_usd(v)}" for w, n, v in out]
 
 
 class Supabase:
@@ -122,6 +153,8 @@ def main() -> None:
     for p in profiles:
         hits = []
         for target in p["symbols"] or []:
+            if target.get("signal") is False:
+                continue  # 시뮬레이션만 해 본 종목 등: 내부자 알림만
             symbol = target["symbol"]
             settings = target.get("settings") or p["base_settings"]
             comps = components_for(symbol, scores, market, settings)
@@ -141,7 +174,37 @@ def main() -> None:
             messages.append({"to": p["push_token"], "title": "지금이닷 · 내 신호", "body": " · ".join(hits),
                              "sound": "default", "channelId": "signals", "data": {"screen": "Journal"}})
 
-    print(f"{today} 알림 대상 {len(profiles)}명 · 종목 상태 {len(updates)}건(처음 {first_seen}) · 보낼 알림 {len(messages)}건")
+    # 내부자 거래: 지켜보는 종목에 지난번 뒤 새로 공시된 거래
+    insider_cache: dict[str, list] = {}
+    insider_messages = 0
+    for p in profiles:
+        watched = [(t["symbol"], t["insider"]) for t in p["symbols"] or [] if t.get("insider") in ("buy", "all")]
+        if not watched:
+            continue
+        lines, newest = [], ""
+        for symbol, mode in watched:
+            if symbol not in insider_cache:
+                path = insider_file(symbol)
+                insider_cache[symbol] = json.loads(path.read_text(encoding="utf-8"))["rows"] if path.exists() else []
+            rows = insider_cache[symbol]
+            newest = max([newest, *(r[10] for r in rows)])
+            prev = state.get((p["user_id"], INSIDER_KEY))
+            if prev:
+                lines += [f"{symbol} {h}" for h in insider_hits(rows, prev["signal_date"], mode)]
+        if not newest:
+            continue
+        prev = state.get((p["user_id"], INSIDER_KEY))
+        if prev and prev["signal_date"] >= newest:
+            continue  # 새 공시 없음
+        if prev is None:
+            first_seen += 1  # 처음: 기준만 기록
+        updates.append({"user_id": p["user_id"], "symbol": INSIDER_KEY, "zone": "neutral", "score": None, "signal_date": newest})
+        if lines and p.get("push_token"):
+            messages.append({"to": p["push_token"], "title": "지금이닷 · 내부자 거래", "body": " · ".join(lines),
+                             "sound": "default", "channelId": "signals", "data": {"screen": "Insider"}})
+            insider_messages += 1
+
+    print(f"{today} 알림 대상 {len(profiles)}명 · 종목 상태 {len(updates)}건(처음 {first_seen}) · 보낼 알림 {len(messages)}건(내부자 {insider_messages})")
     if args.dry_run:
         return
     dead = send_push(messages) if messages else []
