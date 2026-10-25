@@ -8,15 +8,19 @@
                          가격 데이터로 언제든 다시 계산할 수 있어 최신 1개만 둔다.
 - split_decisions.csv    분할·병합 후보 판정 (확정된 판정은 다음 실행 때 재사용)
 
-액면분할: 하루 사이 가격이 1/2, 1/10처럼 딱 떨어지게 바뀐 날을 후보로 잡고, SEC 공시의 발행 주식 수가
+액면분할: 하루 사이 가격이 1/2, 1/10처럼 바뀐 날을 후보로 잡고, SEC 공시의 발행 주식 수가
 같은 비율로 바뀌었는지로 확인한다. 바이오주처럼 실제로 반토막 나는 경우를 분할로 오인하지 않기 위해서다.
-SEC 데이터가 없는 ETF·펀드는 가격 비율만으로 판단한다. SEC 조회에는 SEC_USER_AGENT 환경변수가 필요하다.
+- 비율이 딱 맞으면(1.5% 이내, exact) SEC 데이터가 없거나 아직 판단할 수 없어도 가격 비율로 보정한다 (ETF·펀드 등).
+- 분할 당일에도 주가가 움직여 비율이 조금 어긋나면(15% 이내, 예: 2020년 TSLA 5:1 당일 +12%) SEC로 분할이 확인될 때만 보정한다.
+SEC는 GitHub Actions 접속을 막으므로, PC에서 price_history.py가 확인해 둔 판정(split_decisions_full.csv)도 함께 쓴다.
+SEC 조회에는 SEC_USER_AGENT 환경변수가 필요하다.
 
 현재가·평가손익은 앱에 보여주지 않는다. 가격은 계산·알림 판단과 내부자 화면의 1년 차트(export_prices.py)에만 쓴다.
 """
 
 import csv
 import json
+import math
 import os
 import statistics
 import sys
@@ -32,15 +36,18 @@ ROOT = Path(__file__).resolve().parents[2]
 IEX_DIR = ROOT / "data" / "iex"
 OUT_DIR = ROOT / "data" / "signals"
 DECISIONS_PATH = OUT_DIR / "split_decisions.csv"
+FULL_DECISIONS = OUT_DIR / "split_decisions_full.csv"  # PC에서 SEC로 확인한 전체 기간 판정 (price_history.py)
+DECISION_FIELDS = ["symbol", "date", "price_factor", "exact", "decision", "reason"]
 INSIDER_PATH = ROOT / "data" / "insider" / "purchases.csv"
 
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 SEC_SHARES = "https://data.sec.gov/api/xbrl/companyconcept/CIK{cik:010d}/dei/EntityCommonStockSharesOutstanding.json"
 SEC_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"  # 위가 비어 있는 회사가 있어 대체용
 
-# 하루 사이 가격 비율이 이 배수(또는 역수)에 1.5% 이내로 맞으면 분할·병합 후보로 본다
-SPLIT_FACTORS = (2, 3, 4, 5, 10, 20)
-SPLIT_TOLERANCE = 0.015
+# 하루 사이 가격 비율이 이 배수(또는 역수)에 가까우면 분할·병합 후보로 본다
+SPLIT_FACTORS = (2, 3, 4, 5, 8, 10, 15, 20, 25, 30, 40, 50, 100)
+SPLIT_TOLERANCE = 0.015  # 이 안이면 비율만으로도 분할로 본다 (exact)
+SPLIT_LOOSE = 0.15  # 이 안이면 후보로 잡되 SEC 확인이 있어야 보정한다
 SHARES_TOLERANCE = 0.15  # 발행 주식 수 비율 허용 오차 (신주 발행 등)
 STALE_MINUTES = 30  # 마지막 체결이 마감보다 이만큼 이르면 신뢰도 낮음
 LOOKBACK_DAYS = 300  # 종목별 지표(200일선, 52주)에 필요한 만큼만 읽는다
@@ -82,24 +89,31 @@ def load_closes(until: str):
     return series, [p.stem[4:] for p in files]
 
 
-def detect_split(prev: float, cur: float) -> float | None:
-    """분할이면 과거 가격에 곱할 비율(예: 10:1 분할 → 0.1)을 돌려준다."""
+def detect_split(prev: float, cur: float) -> tuple[float, bool] | None:
+    """분할 후보면 (과거 가격에 곱할 비율(예: 10:1 분할 → 0.1), 비율이 딱 맞는지)."""
+    if prev <= 0 or cur <= 0:
+        return None
     ratio = cur / prev
-    for k in SPLIT_FACTORS:
-        for target in (1 / k, k):
-            if abs(ratio / target - 1) <= SPLIT_TOLERANCE:
-                return target
-    return None
+    target = min((t for k in SPLIT_FACTORS for t in (1 / k, k)), key=lambda t: abs(math.log(ratio / t)))
+    error = abs(ratio / target - 1)
+    return (target, error <= SPLIT_TOLERANCE) if error <= SPLIT_LOOSE else None
 
 
-def split_candidates(series: dict) -> list[tuple[str, str, float]]:
+def split_candidates(series: dict) -> list[tuple[str, str, float, bool]]:
     found = []
     for symbol, points in series.items():
         for (_, prev, _), (date, cur, _) in zip(points, points[1:]):
-            factor = detect_split(prev, cur)
-            if factor:
-                found.append((symbol, date, factor))
+            hit = detect_split(prev, cur)
+            if hit:
+                found.append((symbol, date, *hit))
     return found
+
+
+def applies(row: dict) -> bool:
+    """판정 한 줄을 가격 보정에 쓰는가: 확인된 분할, 또는 비율이 딱 맞는데 아직 판단 못 한 것.
+    예전 판정 파일에는 exact 칸이 없는데, 그때는 딱 맞는 후보만 잡았다."""
+    exact = str(row.get("exact", "True")) != "False"
+    return row["decision"] == "split" or (row["decision"] == "pending" and exact)
 
 
 class SecUnavailable(Exception):
@@ -122,18 +136,25 @@ def sec_get(url: str):
 
 def share_points(concept: dict | None) -> list[tuple[str, int]]:
     shares = (concept or {}).get("units", {}).get("shares") or []
-    return sorted({(x["end"].replace("-", ""), x["val"]) for x in shares})
+    return sorted({(x["end"].replace("-", ""), x["val"]) for x in shares if x["val"] > 0})  # 0으로 잘못 낸 공시 제외
 
 
-def judge_split(cik: int | None, date: str, factor: float) -> tuple[str, str]:
-    """(판정, 근거). 판정: split(보정) / move(실제 등락, 보정 안 함) / pending(아직 판단 불가, 보정)"""
+def judge_split(cik: int | None, date: str, factor: float, exact: bool = True) -> tuple:
+    """(판정, 근거[, SEC로 확인한 배율]). 판정: split(보정) / move(실제 등락, 보정 안 함) / pending(아직 판단 불가, exact일 때만 보정)"""
+    # SEC로 확인할 수 없을 때, 비율이 조금 어긋나도 배율이 10배 이상이면 분할로 본다
+    # (하루에 90% 넘게 '딱' 떨어지는 실제 등락은 드물고, 이런 회사는 대개 클래스가 여럿인 회사(GOOGL 20:1)나 ETF다)
+    big = max(factor, 1 / factor) >= 10
     if cik is None:
+        if not exact and not big:
+            return "move", "SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
         return "split", "SEC 공시 없음(ETF·펀드 등), 가격 비율로 판단"
     points = share_points(sec_get(SEC_SHARES.format(cik=cik)))
     if not points:
         facts = sec_get(SEC_FACTS.format(cik=cik)) or {}
         points = share_points(facts.get("facts", {}).get("dei", {}).get("EntityCommonStockSharesOutstanding"))
     if not points:
+        if not exact and not big:
+            return "move", "SEC 발행 주식 수 데이터 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
         return "split", "SEC 발행 주식 수 데이터 없음, 가격 비율로 판단"
     before = [v for d, v in points if d < date]
     after = [v for d, v in points if d >= date]
@@ -142,39 +163,47 @@ def judge_split(cik: int | None, date: str, factor: float) -> tuple[str, str]:
     ratio = after[0] / before[-1]
     if abs(ratio * factor - 1) <= SHARES_TOLERANCE:
         return "split", f"발행 주식 수 x{ratio:.2f}"
+    if not exact:
+        # 분할 당일 주가가 크게 움직이면 가격 비율이 이웃 배수에 더 가깝다 (2020년 TSLA 5:1 당일 +12% → 4:1처럼 보임).
+        # 발행 주식 수가 가리키는 배수가 가격 비율과도 크게 어긋나지 않으면 그 배수로 분할 확정한다.
+        snapped = min((t for k in SPLIT_FACTORS for t in (1 / k, k)), key=lambda t: abs(math.log(t * ratio)))
+        if abs(snapped * ratio - 1) <= SHARES_TOLERANCE and abs(math.log(snapped / factor)) <= math.log(1.3):
+            return "split", f"발행 주식 수 x{ratio:.2f}, 배율 {snapped:g}로 확인", snapped
     return "move", f"발행 주식 수 x{ratio:.2f}, 분할 아님"
 
 
 def resolve_splits(candidates: list) -> dict[tuple[str, str], float]:
     """보정할 (symbol, date) -> 가격 배율. 확정된 판정은 파일에 남겨 다음에 재사용한다."""
     saved = {}
-    if DECISIONS_PATH.exists():
-        with DECISIONS_PATH.open(encoding="utf-8") as f:
-            saved = {(r["symbol"], r["date"]): r for r in csv.DictReader(f)}
+    for path in (FULL_DECISIONS, DECISIONS_PATH):  # PC에서 SEC로 확인해 둔 것 먼저, 같은 후보면 최근 판정
+        if path.exists():
+            with path.open(encoding="utf-8") as f:
+                saved.update({(r["symbol"], r["date"]): r for r in csv.DictReader(f) if r["decision"] != "pending" or (r["symbol"], r["date"]) not in saved})
     ciks = None
     sec_error = None
     rows = []
-    for symbol, date, factor in sorted(candidates, key=lambda c: (c[1], c[0])):
+    for symbol, date, factor, exact in sorted(candidates, key=lambda c: (c[1], c[0])):
         row = saved.get((symbol, date))
         if row is None or row["decision"] == "pending":
             if sec_error is None:
                 try:
                     if ciks is None:
                         ciks = {v["ticker"]: v["cik_str"] for v in sec_get(SEC_TICKERS).values()}
-                    decision, reason = judge_split(ciks.get(symbol.replace(".", "-")), date, factor)
+                    decision, reason, *confirmed = judge_split(ciks.get(symbol.replace(".", "-")), date, factor, exact)
+                    factor = confirmed[0] if confirmed else factor
                 except SecUnavailable as e:
                     sec_error = e
                     print(f"SEC 조회 실패({e}), 남은 후보는 가격 비율로 임시 보정", file=sys.stderr)
             if sec_error is not None:
                 decision, reason = "pending", f"SEC 조회 실패({sec_error}), 가격 비율로 임시 보정"
-            row = {"symbol": symbol, "date": date, "price_factor": factor, "decision": decision, "reason": reason}
-        rows.append(row)
+            row = {"symbol": symbol, "date": date, "price_factor": factor, "exact": exact, "decision": decision, "reason": reason}
+        rows.append({**row, "exact": row.get("exact", True)})
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     with DECISIONS_PATH.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["symbol", "date", "price_factor", "decision", "reason"])
+        w = csv.DictWriter(f, fieldnames=DECISION_FIELDS)
         w.writeheader()
         w.writerows(rows)
-    return {(r["symbol"], r["date"]): float(r["price_factor"]) for r in rows if r["decision"] != "move"}
+    return {(r["symbol"], r["date"]): float(r["price_factor"]) for r in rows if applies(r)}
 
 
 def adjusted_prices(symbol: str, points: list, splits: dict) -> list[float]:

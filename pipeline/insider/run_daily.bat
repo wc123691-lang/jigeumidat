@@ -9,5 +9,7 @@ python pipeline\insider\form4.py >> pipeline\insider\run.log 2>&1
 rem exit code 3: another collection is still running (output\form4.lock); it will build and push when done
 if errorlevel 3 exit /b 0
 python pipeline\insider\history.py >> pipeline\insider\run.log 2>&1
-git add data\insider
+rem stock splits confirmed with SEC share counts (SEC blocks GitHub Actions); the afternoon signal run reuses them
+python pipeline\signals\price_history.py >> pipeline\insider\run.log 2>&1
+git add data\insider data\signals\split_decisions_full.csv
 git diff --cached --quiet || (git commit -q -m "Insider trades" && git push -q)

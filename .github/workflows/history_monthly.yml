@@ -1,0 +1,39 @@
+name: Full-history prices (monthly)
+
+# 내 신호 시뮬레이션용 전체 기간 종가(분할 보정). 전 종목 파일이 커서 한 달에 한 번만 만들고,
+# 기록 없이 'history' 브랜치에 덮어쓴다. 최근 1년은 매일 갱신되는 'prices' 브랜치를 앱이 이어 붙인다.
+on:
+  schedule:
+    - cron: "0 9 1 * *"  # 매달 1일 18:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: history-monthly
+
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build full-history closes
+        env:
+          SEC_USER_AGENT: "jigeumidat ${{ github.repository_owner }}@users.noreply.github.com"
+        run: python pipeline/signals/export_history.py "$RUNNER_TEMP/history"
+      - name: Push to 'history' branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/history"
+          git init -q -b history
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Full-history prices"
+          git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" history
