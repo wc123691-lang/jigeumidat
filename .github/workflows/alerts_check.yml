@@ -1,0 +1,24 @@
+name: Signal alerts check (dry run)
+
+# 알림 서버 연결 확인용: Secrets로 Supabase에 접속해 계산만 하고, 푸시를 보내거나 상태를 바꾸지 않는다.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline/alerts
+            data/signals
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Dry run
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python pipeline/alerts/send_alerts.py --dry-run
