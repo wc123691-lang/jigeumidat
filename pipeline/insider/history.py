@@ -1,4 +1,4 @@
-"""종목별 내부자 거래 내역 (최근 5년, 장내 매수 P·장내 매도 S) → 앱의 '내부자' 화면용 파일.
+"""종목별 내부자 거래 내역 (2017년부터, 장내 매수 P·장내 매도 S) → 앱의 '내부자' 화면용 파일.
 
 과거분은 SEC가 분기마다 공개하는 Form 3·4·5 정리 데이터셋(Insider Transactions Data Sets)에서,
 아직 데이터셋이 나오지 않은 최근분은 form4.py가 매일 모은 purchases.csv·sales.csv에서 가져온다.
@@ -53,7 +53,7 @@ PRICE_TOLERANCE = 3  # 공시 가격 / 종가가 1/3 ~ 3배 밖이면 뺀다
 FRAMES = "https://data.sec.gov/api/xbrl/frames/{concept}/shares/{period}.json"
 SHARES_MAX_AGE = 550  # 발행주식수가 이보다 오래된 값(일)이면 쓰지 않는다
 LISTING = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
-FIRST_QUARTER = "2021q4"  # 최근 5년
+FIRST_QUARTER = "2017q1"  # 가격 데이터(IEX 2016-12~)와 같은 기간. 내 신호 시뮬레이션의 과거 내부자 신호에도 쓴다
 CODES = ("P", "S")
 COLUMNS = ["issuer_cik", "symbol", "issuer", "accession", "filed", "trade_date", "code", "owner", "role", "title",
            "shares", "value", "shares_after", "plan"]
