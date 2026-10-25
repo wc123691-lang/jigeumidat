@@ -27,6 +27,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "data" / "insider"
+# 같은 수집이 두 번 겹쳐 돌면 같은 거래를 두 번 쓰므로 잠근다. 커밋되지 않는 output/에 둔다.
+LOCK = ROOT / "output" / "form4.lock"
+LOCK_STALE = timedelta(hours=2)  # 하루치(약 40분)마다 갱신한다. 이보다 오래 멈춰 있으면 비정상 종료로 보고 무시
+LOCKED_EXIT = 3  # run_daily.bat이 이 코드를 보면 뒤 단계(정리·커밋)도 건너뛴다
 PURCHASES = OUT_DIR / "purchases.csv"
 SALES = OUT_DIR / "sales.csv"
 OUTPUT = {"P": PURCHASES, "S": SALES}
@@ -138,7 +142,33 @@ def process_day(day: date) -> dict[str, list[dict]] | None:
     return found
 
 
+def acquire_lock() -> bool:
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    if LOCK.exists():
+        age = datetime.now() - datetime.fromtimestamp(LOCK.stat().st_mtime)
+        if age < LOCK_STALE:
+            return False
+        LOCK.unlink()  # 비정상 종료로 남은 잠금
+    try:
+        fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    os.write(fd, f"{os.getpid()} {datetime.now().isoformat()}".encode())
+    os.close(fd)
+    return True
+
+
 def main() -> None:
+    if not acquire_lock():
+        print(f"{datetime.now():%Y-%m-%d %H:%M} 다른 수집이 이미 돌고 있어 건너뜀 ({LOCK})")
+        sys.exit(LOCKED_EXIT)
+    try:
+        collect()
+    finally:
+        LOCK.unlink(missing_ok=True)
+
+
+def collect() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=30, help="처음 시작할 때 거슬러 올라갈 일수")
     parser.add_argument("--from", dest="start", type=date.fromisoformat, help="이 날부터 다시 처리")
@@ -179,6 +209,7 @@ def main() -> None:
                     counts.append(f"{'매수' if code == 'P' else '매도'} {len(new)}건")
                 print(f"{day} 장내 " + ", ".join(counts))
         LAST_DAY.write_text(day.isoformat())
+        LOCK.touch()  # 아직 살아 있음
         day += timedelta(days=1)
 
 

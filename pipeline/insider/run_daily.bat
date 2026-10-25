@@ -6,6 +6,8 @@ set PYTHONIOENCODING=utf-8
 cd /d "%~dp0..\.."
 git pull -q --rebase
 python pipeline\insider\form4.py >> pipeline\insider\run.log 2>&1
+rem exit code 3: another collection is still running (output\form4.lock); it will build and push when done
+if errorlevel 3 exit /b 0
 python pipeline\insider\history.py >> pipeline\insider\run.log 2>&1
 git add data\insider
 git diff --cached --quiet || (git commit -q -m "Insider trades" && git push -q)
