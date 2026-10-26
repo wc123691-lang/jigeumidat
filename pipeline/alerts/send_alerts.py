@@ -17,6 +17,10 @@
 - 구간 경계에서 매일 들락날락하며 여러 번 울리지 않게, 나올 때는 10점 여유를 둔다 (공포는 35 이상이 돼야 벗어남).
 - 사용자마다 지금 구간은 alert_state의 '__market__' 줄에 둔다 (공포 = zone 'buy', 탐욕 = 'sell'). 처음에는 기록만 한다.
 
+하원의원 거래 알림도 보낸다 (별도 푸시): 사용자가 의원 상세 화면에서 켠 의원(base_settings의 "followMembers" id 목록)에
+지난 실행 뒤 새로 공시된 거래가 있으면 묶어 알린다. 공시는 data/congress/members/<id>.json (PC 정오 작업이 매일 갱신).
+- 사용자마다 '어디까지 알렸나'(마지막 공시일)는 alert_state의 '__congress__' 줄에 둔다. 처음에는 기준만 기록한다.
+
 공개 저장소이므로 로그에는 개수만 남기고 사용자 정보는 찍지 않는다.
 비밀 키는 GitHub Secrets(SUPABASE_URL, SUPABASE_SECRET_KEY)로만 받는다. 없으면 아무것도 하지 않고 끝낸다.
 
@@ -38,6 +42,9 @@ SIGNALS = ROOT / "data" / "signals"
 INSIDER = ROOT / "data" / "insider" / "by_ticker"
 INSIDER_KEY = "__insider__"
 MARKET_KEY = "__market__"
+CONGRESS_KEY = "__congress__"
+CONGRESS = ROOT / "data" / "congress" / "members"
+TX_WORD = {"P": "매수", "S": "매도", "S (partial)": "일부 매도", "E": "교환"}
 FEAR, GREED, HYSTERESIS = 25, 75, 10  # 앱의 '극단적 공포'·'극단적 탐욕' 경계와 같다
 EXPO_PUSH = "https://exp.host/--/api/v2/push/send"
 PAGE = 1000
@@ -98,6 +105,20 @@ def market_message(zone: str, fg: float) -> str:
     if zone == "buy":
         return f"시장이 극단적 공포 구간에 들어왔어요 (공포·탐욕 {round(fg)}). 내 종목의 신호가 매수 기준에 가까워졌는지 확인해 보세요."
     return f"시장이 극단적 탐욕 구간에 들어왔어요 (공포·탐욕 {round(fg)}). 들뜬 시장이에요, 매도 기준과 처음 정한 약속을 확인해 보세요."
+
+
+def congress_lines(name: str, trades: list, after: str) -> list[str]:
+    """after(공시일) 뒤 새로 공시된 거래 요약. trades: members/<id>.json 형식 [티커, 유형, 소유자, 거래종류, 거래일, 공시일, 하한, 상한, 자산, 종가]"""
+    new = [t for t in trades if t[5] > after]
+    if not new:
+        return []
+    by = {}
+    for t in new:
+        by.setdefault((t[3], t[0]), 0)
+        by[(t[3], t[0])] += 1
+    parts = [f"{tick} {TX_WORD.get(tx, tx)}" + (f" {n}건" if n > 1 else "") for (tx, tick), n in list(by.items())[:4]]
+    more = len(by) - 4
+    return [f"{name}: " + ", ".join(parts) + (f" 외 {more}종목" if more > 0 else "")]
 
 
 def compact_usd(v: float) -> str:
@@ -245,8 +266,41 @@ def main() -> None:
                 market_messages += 1
             updates.append({"user_id": p["user_id"], "symbol": MARKET_KEY, "zone": zone, "score": round(fg, 1), "signal_date": today})
 
+    # 하원의원: 사용자가 켠 의원에 지난번 뒤 새로 공시된 거래
+    congress_cache: dict[str, dict | None] = {}
+    congress_messages = 0
+    for p in profiles:
+        ids = (p["base_settings"] or {}).get("followMembers") or []
+        if not ids:
+            continue
+        lines, newest, first_id = [], "", None
+        prev = state.get((p["user_id"], CONGRESS_KEY))
+        for mid in ids:
+            if mid not in congress_cache:
+                path = CONGRESS / f"{mid}.json"
+                congress_cache[mid] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+            m = congress_cache[mid]
+            if not m or not m["trades"]:
+                continue
+            newest = max(newest, max(t[5] for t in m["trades"]))
+            if prev:
+                got = congress_lines(m["name"], m["trades"], prev["signal_date"])
+                if got and first_id is None:
+                    first_id = mid
+                lines += got
+        if not newest or (prev and prev["signal_date"] >= newest):
+            continue
+        if prev is None:
+            first_seen += 1  # 처음: 기준만 기록
+        updates.append({"user_id": p["user_id"], "symbol": CONGRESS_KEY, "zone": "neutral", "score": None, "signal_date": newest})
+        if lines and p.get("push_token"):
+            # 한 의원만이면 그 의원 화면으로, 여러 명이면 첫 의원 화면으로
+            messages.append({"to": p["push_token"], "title": "지금이닷 · 의원 거래", "body": " · ".join(lines),
+                             "sound": "default", "channelId": "signals", "data": {"screen": "CongressMember", "id": first_id}})
+            congress_messages += 1
+
     print(f"{today} 알림 대상 {len(profiles)}명 · 종목 상태 {len(updates)}건(처음 {first_seen}) · 보낼 알림 {len(messages)}건"
-          f"(내부자 {insider_messages}, 시장 {market_messages})")
+          f"(내부자 {insider_messages}, 시장 {market_messages}, 의원 {congress_messages})")
     if args.dry_run:
         return
     dead = send_push(messages) if messages else []
