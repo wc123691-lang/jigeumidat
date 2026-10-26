@@ -11,5 +11,9 @@ if errorlevel 3 exit /b 0
 python pipeline\insider\history.py >> pipeline\insider\run.log 2>&1
 rem stock splits confirmed with SEC share counts (SEC blocks GitHub Actions); the afternoon signal run reuses them
 python pipeline\signals\price_history.py >> pipeline\insider\run.log 2>&1
-git add data\insider data\signals\split_decisions_full.csv
+rem House members' stock trade reports (PTR) and per-trade returns (needs full price history in output\history)
+python pipeline\congress\house.py >> pipeline\insider\run.log 2>&1
+python pipeline\signals\export_history.py >> pipeline\insider\run.log 2>&1
+python pipeline\congress\house_returns.py >> pipeline\insider\run.log 2>&1
+git add data\insider data\congress data\signals\split_decisions_full.csv
 git diff --cached --quiet || (git commit -q -m "Insider trades" && git push -q)
