@@ -51,6 +51,10 @@ MAX_GROWTH = 10.0  # 보유 증가율 상한 (10배)
 CACHE = ROOT / "output" / "form345"
 UNIVERSE = ROOT / "data" / "signals" / "scores_latest.json"
 IEX = ROOT / "data" / "iex"
+HISTORY_DIR = ROOT / "output" / "history"  # export_history.py가 만든 전체 기간 종가 (상장일 확인용, 없으면 상장 직후 매수를 못 거른다)
+HISTORY_DATES = json.loads((HISTORY_DIR / "_dates.json").read_text(encoding="utf-8")) if (HISTORY_DIR / "_dates.json").exists() else []
+RECENT_DIR = ROOT / "output" / "prices"  # export_prices.py가 만든 최근 1년 종가
+RECENT_DATES = json.loads((RECENT_DIR / "_dates.json").read_text(encoding="utf-8")) if (RECENT_DIR / "_dates.json").exists() else []
 PRICE_TOLERANCE = 3  # 공시 가격 / 종가가 1/3 ~ 3배 밖이면 뺀다
 FRAMES = "https://data.sec.gov/api/xbrl/frames/{concept}/shares/{period}.json"
 SHARES_MAX_AGE = 550  # 발행주식수가 이보다 오래된 값(일)이면 쓰지 않는다
@@ -200,11 +204,11 @@ def file_name(ticker: str) -> str:
     return ("_" if RESERVED.match(ticker) else "") + ticker + ".json"
 
 
-_closes: dict[str, dict[str, float]] = {}
+_closes: dict[str, dict[str, tuple[float, int]]] = {}
 
 
-def close_near(day: str, ticker: str) -> float | None:
-    """거래일(휴장이면 5일 전까지)의 IEX 종가."""
+def iex_near(day: str, ticker: str) -> tuple[float, int] | None:
+    """거래일(휴장이면 5일 전까지)의 IEX (종가, 거래량)."""
     d = date.fromisoformat(day)
     for back in range(6):
         key = (d - timedelta(days=back)).strftime("%Y%m%d")
@@ -213,9 +217,52 @@ def close_near(day: str, ticker: str) -> float | None:
             _closes[key] = {}
             if path.exists():
                 with path.open(encoding="utf-8") as f:
-                    _closes[key] = {r["symbol"]: float(r["iex_last_price"]) for r in csv.DictReader(f) if r["iex_last_price"]}
+                    _closes[key] = {r["symbol"]: (float(r["iex_last_price"]), int(float(r["volume"] or 0)))
+                                    for r in csv.DictReader(f) if r["iex_last_price"]}
         if ticker in _closes[key]:
             return _closes[key][ticker]
+    return None
+
+
+def close_near(day: str, ticker: str) -> float | None:
+    hit = iex_near(day, ticker)
+    return hit[0] if hit else None
+
+
+# 장내 매수로 보기 어려운 '매수' (P 코드지만 공모 참여·장외 배정·단위 착오인 것)
+IPO_DAYS = 30  # 상장 후 이 기간의 매수는 공모가 참여로 본다 (임상 바이오 상장 때 기존 투자자가 대량으로 사는 경우 등)
+MAX_IEX_MULTIPLE = 1000  # IEX는 전체 거래량의 2~3%라, 그날 IEX 거래량의 1,000배는 전체 시장 며칠치보다 많다
+FUND_NAME = re.compile(r"\bFUND\b|\bETF\b|MUNICIPAL|\bFUNDS\b", re.I)  # 폐쇄형 펀드·ETF는 회사 내부자 신호가 아니다
+_listed: dict[str, str | None] = {}
+
+
+def listed_on(ticker: str) -> str | None:
+    """우리 가격 기록(2016-12~)에서 처음 체결된 날. 기록 시작부터 있던 종목은 None (상장일을 모른다).
+    전체 기간 파일은 1년 넘게 거래된 종목만 있어서, 없으면 최근 1년 파일(export_prices.py)에서 찾는다."""
+    if ticker not in _listed:
+        _listed[ticker] = None
+        path = HISTORY_DIR / file_name(ticker)
+        if path.exists():
+            start = json.loads(path.read_text(encoding="utf-8"))["start"]
+            if 0 < start < len(HISTORY_DATES):
+                _listed[ticker] = HISTORY_DATES[start]
+        elif (RECENT_DIR / file_name(ticker)).exists() and RECENT_DATES:
+            closes = json.loads((RECENT_DIR / file_name(ticker)).read_text(encoding="utf-8"))
+            first = next((i for i, v in enumerate(closes) if v is not None), 0)
+            _listed[ticker] = RECENT_DATES[first] if first > 0 else None
+    return _listed[ticker]
+
+
+def not_market_buy(r: dict, ticker: str) -> str | None:
+    """빼야 하는 매수면 이유를, 아니면 None."""
+    if r["code"] != "P":
+        return None
+    listed = listed_on(ticker)
+    if listed and r["trade_date"] < (date.fromisoformat(listed) + timedelta(days=IPO_DAYS)).isoformat():
+        return "ipo"
+    hit = iex_near(r["trade_date"], ticker)
+    if hit and hit[1] > 0 and float(r["shares"]) > MAX_IEX_MULTIPLE * hit[1]:
+        return "size"
     return None
 
 
@@ -311,9 +358,21 @@ def main() -> None:
     for ticker, (_, cik) in sorted(claims.items()):
         ticker_of.setdefault(cik, ticker)
     dropped = 0
-    for cik, ticker in ticker_of.items():
-        kept = [r for r in by_cik[cik] if plausible(r, ticker)]
-        dropped += len(by_cik[cik]) - len(kept)
+    reasons: dict[str, int] = defaultdict(int)
+    for cik, ticker in list(ticker_of.items()):
+        if FUND_NAME.search(by_cik[cik][-1]["issuer"] if by_cik[cik] else ""):
+            reasons["fund"] += len(by_cik[cik])
+            by_cik[cik] = []
+            continue
+        kept = []
+        for r in by_cik[cik]:
+            why = not_market_buy(r, ticker)
+            if why:
+                reasons[why] += 1
+            elif plausible(r, ticker):
+                kept.append(r)
+            else:
+                dropped += 1
         by_cik[cik] = kept
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -374,7 +433,8 @@ def main() -> None:
     old_feed = INSIDER / "latest.json"  # 예전 첫 화면 파일 (최근 30일 공시 목록)
     if old_feed.exists():
         old_feed.unlink()
-    print(f"{today} 종목 {len(written)}개 내부자 거래 내역 저장 (가격이 종가와 크게 달라 뺀 공시 {dropped}건)")
+    print(f"{today} 종목 {len(written)}개 내부자 거래 내역 저장 (가격이 종가와 크게 달라 뺀 공시 {dropped}건, "
+          f"상장 직후 매수 {reasons['ipo']}건, 거래량에 비해 너무 큰 매수 {reasons['size']}건, 펀드 {reasons['fund']}건)")
 
 
 if __name__ == "__main__":

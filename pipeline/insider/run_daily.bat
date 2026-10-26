@@ -8,6 +8,8 @@ git pull -q --rebase
 python pipeline\insider\form4.py >> pipeline\insider\run.log 2>&1
 rem exit code 3: another collection is still running (output\form4.lock); it will build and push when done
 if errorlevel 3 exit /b 0
+rem recent 1-year closes first: history.py uses them to find listing dates (drops IPO-day purchases)
+python pipeline\signals\export_prices.py >> pipeline\insider\run.log 2>&1
 python pipeline\insider\history.py >> pipeline\insider\run.log 2>&1
 rem stock splits confirmed with SEC share counts (SEC blocks GitHub Actions); the afternoon signal run reuses them
 python pipeline\signals\price_history.py >> pipeline\insider\run.log 2>&1
