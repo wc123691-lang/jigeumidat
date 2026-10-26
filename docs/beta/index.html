@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>지금이닷 베타 테스터 모집</title>
+<meta name="description" content="왜 샀는지 기록하고, 내가 정한 신호로 확인하는 미국 주식 매매일지. 지금이닷 안드로이드 베타 테스터를 모집해요.">
+<meta property="og:title" content="지금이닷 베타 테스터 모집 · 미국 주식 매매일지">
+<meta property="og:description" content="감으로 하던 미국 주식, 내 기준으로. 안드로이드 베타 테스터를 모집해요.">
+<meta property="og:image" content="https://wc123691-lang.github.io/jigeumidat/beta/og.png">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root {
+    --bg: #ffffff; --soft: #f6f7f9; --card: #ffffff; --line: #e6e8ec; --text: #16181d; --sub: #5d6470; --muted: #8a919c;
+    --accent: #ffc93c; --accent-ink: #14161b; --brand: #0f1115; --gain: #e5484d; --loss: #2f6fe4; --ok: #1f9d55;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    font-size: 17px; line-height: 1.7; word-break: keep-all; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 20px; }
+  section { padding: 56px 0; }
+  section + section { border-top: 1px solid var(--line); }
+  h1 { font-size: 34px; line-height: 1.3; margin: 0 0 16px; letter-spacing: -0.02em; }
+  h2 { font-size: 26px; line-height: 1.35; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h3 { font-size: 19px; margin: 0 0 6px; }
+  .eyebrow { display: inline-block; font-size: 14px; font-weight: 700; color: #9a6b00; background: #fff4d1; padding: 4px 12px; border-radius: 999px; margin-bottom: 14px; }
+  .lead { font-size: 19px; color: var(--sub); margin: 0; }
+  .sub { color: var(--sub); margin: 0 0 28px; }
+
+  /* 맨 위 */
+  .hero { background: var(--brand); color: #f2f3f5; padding: 64px 0 56px; }
+  .hero .brand { font-weight: 800; font-size: 20px; margin-bottom: 28px; }
+  .hero .brand i { color: var(--accent); font-style: normal; }
+  .hero h1 { color: #fff; }
+  .hero .lead { color: #c9ced6; }
+  .hero .eyebrow { color: var(--accent-ink); background: var(--accent); }
+  .hero .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 28px; padding: 0; list-style: none; }
+  .hero .facts li { font-size: 14px; color: #c9ced6; border: 1px solid #343a46; border-radius: 999px; padding: 6px 12px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; padding: 0 28px; border-radius: 14px;
+    background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 18px; text-decoration: none; border: 0; cursor: pointer; }
+  .btn:disabled { background: #e6e8ec; color: #9aa1ab; cursor: not-allowed; }
+  .btn.block { width: 100%; }
+
+  /* 이런 분께 */
+  .who { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+  .who li { display: flex; gap: 14px; align-items: flex-start; background: var(--soft); border-radius: 16px; padding: 18px 18px; }
+  .who .ico { flex: none; width: 40px; height: 40px; border-radius: 12px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .who b { display: block; font-size: 17px; }
+  .who span { color: var(--sub); font-size: 15px; }
+
+  /* 기능 */
+  .feature { border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 14px; }
+  .feature .tag { display: inline-block; font-size: 13px; font-weight: 700; color: var(--sub); background: var(--soft); border-radius: 8px; padding: 2px 8px; margin-bottom: 8px; }
+  .feature p { margin: 0 0 10px; color: var(--sub); }
+  .feature .how { background: #fffaea; border-radius: 12px; padding: 12px 14px; font-size: 15px; color: #4a3c10; }
+  .feature .how b { color: #7a5800; }
+  .shots { display: flex; gap: 12px; overflow-x: auto; padding: 4px 0 12px; margin: 0 -20px 8px; padding-left: 20px; scroll-snap-type: x mandatory; }
+  .shots img { flex: none; width: 46%; max-width: 220px; border-radius: 18px; border: 1px solid var(--line); scroll-snap-align: start; }
+
+  /* 진행 방식 */
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  .steps li { counter-increment: s; position: relative; padding: 16px 16px 16px 60px; background: var(--soft); border-radius: 16px; }
+  .steps li::before { content: counter(s); position: absolute; left: 16px; top: 16px; width: 30px; height: 30px; border-radius: 50%; background: var(--brand); color: #fff;
+    font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .steps b { display: block; }
+  .steps span { color: var(--sub); font-size: 15px; }
+
+  /* 확인 사항 */
+  .check { display: grid; gap: 10px; margin: 0 0 20px; }
+  .check label { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border: 2px solid var(--line); border-radius: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .check label:has(input:checked) { border-color: var(--ok); background: #effaf3; }
+  .check input { flex: none; width: 24px; height: 24px; margin: 2px 0 0; accent-color: var(--ok); }
+  .check b { display: block; }
+  .check span { color: var(--sub); font-size: 15px; }
+  .progress { font-size: 15px; color: var(--sub); margin: 0 0 12px; text-align: center; }
+  .note { font-size: 14px; color: var(--muted); margin-top: 12px; text-align: center; }
+
+  details { border-bottom: 1px solid var(--line); padding: 14px 0; }
+  summary { font-weight: 700; cursor: pointer; }
+  details p { color: var(--sub); margin: 8px 0 0; }
+
+  footer { background: var(--soft); padding: 36px 0 48px; font-size: 14px; color: var(--muted); }
+  footer p { margin: 0 0 8px; }
+
+  @media (min-width: 640px) {
+    h1 { font-size: 42px; }
+    .who { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brand">지금이닷<i>.</i></div>
+    <span class="eyebrow">안드로이드 베타 테스터 모집</span>
+    <h1>감으로 하던 미국 주식,<br>이제 내 기준으로.</h1>
+    <p class="lead">왜 샀는지 기록하고, 내가 정한 신호로 확인하는 미국 주식 매매일지예요. 출시 전에 먼저 써 보고 의견을 들려주실 분을 찾아요.</p>
+    <ul class="facts">
+      <li>무료</li><li>안드로이드</li><li>테스트 기간 약 2주</li><li>가입·계좌 연결 없음</li>
+    </ul>
+    <a class="btn" href="#apply">테스터 신청하기 →</a>
+  </div>
+</header>
+
+<main>
+<section>
+  <div class="wrap">
+    <h2>이런 분께 딱 맞아요</h2>
+    <p class="sub">하나라도 해당되면 지금이닷이 도움이 될 거예요.</p>
+    <ul class="who">
+      <li><div class="ico">📚</div><div><b>공부하자니 복잡하고, 안 하자니 불안한 분</b><span>어려운 지표를 몰라도, 앱이 쉬운 말로 풀어서 점수 하나로 보여줘요.</span></div></li>
+      <li><div class="ico">🎲</div><div><b>투자는 꽤 했지만 그때그때 감으로 사고판 분</b><span>감 대신 내가 미리 정한 기준으로 "지금 살 때인지"를 확인해요.</span></div></li>
+      <li><div class="ico">📝</div><div><b>매매일지가 좋은 건 알지만 귀찮은 분</b><span>기분 하나만 눌러도 기록이 남아요. 팔기 전엔 그때의 나를 다시 보여줘요.</span></div></li>
+      <li><div class="ico">👶</div><div><b>직장·육아로 미국 주식은 후순위인 분</b><span>매일 들여다보지 않아도, 내 기준을 넘는 날에만 저녁에 알림이 와요.</span></div></li>
+      <li><div class="ico">🧪</div><div><b>내 감이 맞았는지 시뮬레이션해 보고 싶은 분</b><span>내 설정대로 사고팔았다면 과거에 어땠을지, 계속 들고 있었을 때와 비교해요.</span></div></li>
+      <li><div class="ico">🎯</div><div><b>내 종목에 나만의 신호를 정하고 싶은 분</b><span>테슬라는 이렇게, 엔비디아는 저렇게. 종목마다 기준을 따로 둘 수 있어요.</span></div></li>
+      <li><div class="ico">🏛️</div><div><b>미국 하원의원들이 산 주식이 궁금한 분</b><span>펠로시 등 의원들의 거래 공시를 모아 보고, 원하는 의원의 새 공시를 알림으로 받아요.</span></div></li>
+      <li><div class="ico">🕵️</div><div><b>미국 기업 내부자 매매를 챙겨 보고 싶은 분</b><span>CEO·임원·이사가 자기 회사 주식을 샀는지, SEC 공시를 매일 모아 보여줘요.</span></div></li>
+      <li><div class="ico">😱</div><div><b>시장이 무서울 때 휩쓸리고 싶지 않은 분</b><span>시장이 극단적 공포에 들어가면 알려주고, 내 종목이 기준에 얼마나 가까운지 보여줘요.</span></div></li>
+      <li><div class="ico">💱</div><div><b>환율까지 따져 보고 사고 싶은 분</b><span>달러가 평소보다 싼지 비싼지도 신호에 함께 넣을 수 있어요.</span></div></li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>이런 기능이 있어요</h2>
+    <p class="sub">기능과 함께, 실제로 어떻게 쓰면 좋은지도 적어 두었어요.</p>
+    <div class="shots" aria-label="앱 화면">
+      <img src="shot1.png" alt="매매일지: 팔기 전에 그때의 나를 만나는 화면" loading="lazy">
+      <img src="shot2.png" alt="내 신호로 보는 TSLA 점수 화면" loading="lazy">
+      <img src="shot3.png" alt="내 신호대로 사고팔았다면 과거 시뮬레이션 화면" loading="lazy">
+      <img src="shot4.png" alt="미국 기업 내부자 매수 목록 화면" loading="lazy">
+    </div>
+
+    <div class="feature">
+      <span class="tag">매매일지</span>
+      <h3>📝 왜 샀는지 기록하고, 팔기 전에 그때의 나를 만나요</h3>
+      <p>살 때 이유(실적 기대, 분할매수 등), 기분(계획대로·불안·FOMO), 약속(목표가·손절가)을 남겨요. 팔려고 하면 그때 적은 이유를 다시 보여주고 "그 이유가 아직 유효한가요?"를 물어요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · 증권사 앱에서 산 직후 기분 하나만 눌러 저장하세요. 한 달 뒤 '나의 매매 리포트'에서 "FOMO로 산 건 −8%, 계획대로 산 건 +12%" 같은 내 습관이 보여요.</div>
+    </div>
+
+    <div class="feature">
+      <span class="tag">내 신호</span>
+      <h3>🎯 믿는 신호에 비중을 줘서, 나만의 점수로 봐요</h3>
+      <p>공포·탐욕 지수, RSI, 200일선, 52주 고점 대비 하락, 원/달러 환율, 내부자 매수 등 10가지 신호를 내가 믿는 만큼 섞어 −100~+100 점수 하나로 보여줘요. 신호마다 쉬운 설명이 있어요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · 처음엔 '보수적 장기투자' 같은 스타일 하나만 고르세요. 홈에서 내 종목이 매수 기준까지 몇 점 남았는지 바로 보여요. 익숙해지면 종목마다 따로 정해 보세요.</div>
+    </div>
+
+    <div class="feature">
+      <span class="tag">과거 시뮬레이션</span>
+      <h3>🧪 내 기준대로 했다면 과거엔 어땠을까</h3>
+      <p>내 설정대로 사고팔았을 때와 계속 들고 있었을 때를 2017년부터 비교해요. 기준을 바꿔 가며 "어느 정도가 나한테 맞는지"를 확인할 수 있어요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · 지금 들고 있는 종목으로 돌려 보세요. 기준이 너무 엄격해서 몇 년간 한 번도 안 샀다면, 기준을 조금 낮춰 볼 때예요.</div>
+    </div>
+
+    <div class="feature">
+      <span class="tag">✨ 과거 맞춤 설정 찾기</span>
+      <h3>🔍 이 종목은 어떤 신호에 잘 반응해 왔을까</h3>
+      <p>종목을 고르면 설정 2,000여 개를 시험해, 그 종목이 어떤 신호에 잘 맞고 어떤 신호엔 안 맞았는지 '종목의 성격'을 알려줘요. 결과를 이미지나 링크로 친구에게 보여줄 수 있어요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · 결과는 '정답'이 아니라 '이 종목이 그동안 이렇게 움직여 왔다'는 참고예요. 마음에 들면 그 종목 전용 신호로 저장해 내 기준과 나란히 비교해 보세요.</div>
+    </div>
+
+    <div class="feature">
+      <span class="tag">미국 의원 거래</span>
+      <h3>🏛️ 펠로시는 뭘 샀을까? 하원의원 주식 거래</h3>
+      <p>미국 하원의원들이 법에 따라 공개하는 주식 거래를 모았어요. 기간별 수익률 Top 10, 의원 이름 검색, 의원별 매수·매도 내역과 그날 종가까지 볼 수 있어요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · 관심 있는 의원 화면에서 '이 의원 거래 알림'을 켜 두세요. 새 공시가 뜬 날 저녁에 알려줘요. 거래는 최대 45일 뒤에 공개된다는 점은 꼭 기억해 주세요.</div>
+    </div>
+
+    <div class="feature">
+      <span class="tag">내부자 거래</span>
+      <h3>🕵️ 회사를 가장 잘 아는 사람들의 실제 매매</h3>
+      <p>미국 증권거래위원회(SEC)에 매일 올라오는 임원·이사·대주주의 장내 매매예요. 기간·금액·인원으로 걸러 보고, 종목마다 차트 위에 내부자 매수 시점을 표시해요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · '임원·이사 여러 명이 산 종목'은 더 살펴볼 단서예요. 앱 안의 과거 검증처럼, 그것만 보고 사기보다 내 기준과 함께 보세요.</div>
+    </div>
+
+    <div class="feature">
+      <span class="tag">알림 · 편의</span>
+      <h3>🔔 신경 쓰지 않아도, 필요할 때만</h3>
+      <p>내 신호가 기준을 넘은 날, 시장이 극단적 공포·탐욕에 들어간 날, 내 종목에 내부자 매수가 공시된 날 저녁에 알려줘요. 토스·키움 등 내 증권사 앱을 바로 열고, 거래하고 돌아오면 기록하기를 물어봐요.</p>
+      <div class="how"><b>이렇게 써 보세요</b> · 알림을 켜 두고 평소엔 잊고 지내세요. 알림이 왔을 때만 앱을 열어 내 기준과 처음 산 이유를 확인하면 돼요.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>테스트는 이렇게 진행돼요</h2>
+    <p class="sub">어렵지 않아요. 평소처럼 써 보시면 돼요.</p>
+    <ol class="steps">
+      <li><b>신청</b><span>아래 확인 사항을 체크하고, 구글 계정으로 신청서를 내 주세요.</span></li>
+      <li><b>참여 안내 받기</b><span>신청하신 구글 이메일로 Google Play 테스트 참여 링크를 보내드려요.</span></li>
+      <li><b>설치</b><span>링크에서 '테스터 되기'를 누르고 Play 스토어에서 설치해요. 일반 앱처럼 설치돼요.</span></li>
+      <li><b>2주 동안 써 보기</b><span>기록을 한두 개 남기고, 며칠에 한 번 열어 봐 주세요. 앱을 지우거나 테스트 참여를 취소하지 말아 주세요.</span></li>
+      <li><b>의견 들려주기</b><span>불편했던 점, 좋았던 점을 알려주시면 정식 출시 때 반영할게요.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section id="apply">
+  <div class="wrap">
+    <h2>신청 전에 확인해 주세요</h2>
+    <p class="sub">모두 해당되어야 신청할 수 있어요.</p>
+    <form class="check" id="checks" onsubmit="return false">
+      <label><input type="checkbox" required><div><b>안드로이드 폰을 쓰고 있어요</b><span>지금은 안드로이드만 테스트해요. 아이폰은 아쉽지만 다음에 함께해요.</span></div></label>
+      <label><input type="checkbox" required><div><b>구글(Gmail) 계정이 있어요</b><span>그 폰의 Play 스토어에 로그인된 구글 계정으로 신청해 주세요. 이 계정으로 테스트 초대가 가요.</span></div></label>
+      <label><input type="checkbox" required><div><b>앱 안의 광고는 누르지 않을게요</b><span>테스트 기간에 광고를 누르면 광고 계정에 문제가 생길 수 있어요. 보이기만 하고 누르지는 말아 주세요.</span></div></label>
+      <label><input type="checkbox" required><div><b>2주 동안 앱을 지우지 않고 가끔 열어 볼게요</b><span>Google Play 정식 출시 조건이라, 중간에 빠지시면 출시가 늦어질 수 있어요.</span></div></label>
+      <label><input type="checkbox" required><div><b>투자 권유 앱이 아니라는 걸 알아요</b><span>지금이닷은 내 기록과 내가 정한 기준을 보여주는 도구예요. 투자 판단과 책임은 나에게 있어요.</span></div></label>
+    </form>
+    <p class="progress" id="progress">5개 중 0개 확인했어요</p>
+    <button class="btn block" id="applyBtn" disabled>구글 계정으로 신청하기</button>
+    <p class="note">신청서는 구글 설문지로 열려요. 구글 로그인 후 이름과 이메일이 신청 명단에 저장되고, 테스트 안내 외에는 쓰지 않아요.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>자주 묻는 질문</h2>
+    <details><summary>정말 무료인가요?</summary><p>네, 테스트 기간 동안 모든 기능을 무료로 써 볼 수 있어요.</p></details>
+    <details><summary>증권사 계좌를 연결해야 하나요?</summary><p>아니요. 계좌 연결도, 회원가입도 없어요. 매매 기록은 내 폰에만 저장돼요.</p></details>
+    <details><summary>내 투자 기록이 다른 곳으로 보내지나요?</summary><p>매매일지·메모·가격·수량은 폰에만 있어요. 알림을 켜면 알림에 필요한 종목 목록과 신호 설정만 익명으로 서버에 보내요.</p></details>
+    <details><summary>아이폰은 언제 되나요?</summary><p>안드로이드 테스트 반응을 보고 아이폰 버전을 준비할 예정이에요.</p></details>
+    <details><summary>테스트가 끝나면 앱은 어떻게 되나요?</summary><p>정식 출시되면 같은 앱이 그대로 업데이트돼요. 기록도 그대로 남아요.</p></details>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><b>지금이닷.</b> 왜 샀는지 기록하고, 내가 정한 신호로 확인하는 미국 주식 매매일지</p>
+    <p>지금이닷은 투자 자문이나 권유를 하지 않아요. 앱에 보이는 과거 수익률·시뮬레이션은 과거 데이터로 계산한 것이며 미래 수익을 보장하지 않아요.</p>
+    <p>문의: <a href="mailto:jigeumidat.app@gmail.com">jigeumidat.app@gmail.com</a> · <a href="../privacy/">개인정보처리방침</a></p>
+  </div>
+</footer>
+
+<script>
+  // 신청서(구글 설문지) 주소. 설문지를 만든 뒤 여기에 넣는다. 비어 있으면 '준비 중'으로 안내한다.
+  const FORM_URL = '';
+  const boxes = [...document.querySelectorAll('#checks input')];
+  const btn = document.getElementById('applyBtn');
+  const progress = document.getElementById('progress');
+  const update = () => {
+    const n = boxes.filter((b) => b.checked).length;
+    btn.disabled = n < boxes.length;
+    progress.textContent = n < boxes.length ? `${boxes.length}개 중 ${n}개 확인했어요` : '모두 확인했어요! 신청해 주세요 🙌';
+  };
+  boxes.forEach((b) => b.addEventListener('change', update));
+  btn.addEventListener('click', () => {
+    if (!FORM_URL) { alert('신청서를 준비하고 있어요. 조금만 기다려 주세요!'); return; }
+    window.open(FORM_URL, '_blank', 'noopener');
+  });
+  update();
+</script>
+</body>
+</html>
