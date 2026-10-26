@@ -17,5 +17,7 @@ rem House members' stock trade reports (PTR) and per-trade returns (needs full p
 python pipeline\congress\house.py >> pipeline\insider\run.log 2>&1
 python pipeline\signals\export_history.py >> pipeline\insider\run.log 2>&1
 python pipeline\congress\house_returns.py >> pipeline\insider\run.log 2>&1
+rem insider cluster-buy backtest shown in the app (also needs output\history)
+python pipeline\insider\backtest.py >> pipeline\insider\run.log 2>&1
 git add data\insider data\congress data\signals\split_decisions_full.csv
 git diff --cached --quiet || (git commit -q -m "Insider trades" && git push -q)
