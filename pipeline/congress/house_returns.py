@@ -13,9 +13,10 @@
 출력: data/congress/house.json
   {"asof", "fields": [...], "members": [[이름, 지역구, 파일 이름], ...],
    "trades": [[의원 번호, 티커, 자산 유형, 소유자, 거래일, 공시일, 금액 하한, 금액 상한, 나온 날 또는 "",
-               거래일 기준 수익률, 공시 기준 수익률, 같은 기간 SPY(거래일), SPY(공시)], ...]}
+               거래일 기준 수익률, 공시 기준 수익률, 같은 기간 SPY(거래일), SPY(공시),
+               종가(거래일), 종가(판 날 또는 마지막 거래일), 종가(공시 다음 날), 종가(판 사실 공시 다음 날 또는 마지막 거래일)], ...]}
   수익률은 소수(0.12 = +12%), 가격이 없으면 null. 최근 거래가 앞.
-      data/congress/members/<파일 이름>.json  의원 한 명의 전체 거래 (매도·교환 포함, 상세 화면용)
+      data/congress/members/<파일 이름>.json  의원 한 명의 전체 거래 (매도·교환 포함, 상세 화면용, 끝에 그날 종가)
   파일 이름은 이름으로 만든 고정 값(nancy-pelosi)이라 실행마다 바뀌는 번호와 달리 앱 캐시와 어긋나지 않는다.
 """
 
@@ -71,6 +72,14 @@ def ret(c: list, start: str, end: str | None) -> float | None:
     if not a or not b or b[0] < a[0]:
         return None
     return b[1] / a[1] - 1
+
+
+def close_at(c: list | None, day: str | None) -> float | None:
+    """그날(체결 없으면 다음 체결일) 종가. day가 없으면 마지막 거래일 종가 (아직 보유 중)."""
+    if not c:
+        return None
+    p = price_on_or_after(c, day) if day else last_price(c)
+    return round(p[1], 4) if p else None
 
 
 def next_day(day: str) -> str:
@@ -135,11 +144,11 @@ def main() -> None:
     out, by_member, missing = [], {}, 0
     for r in rows:
         mi = member_idx[r["member"]]
+        c = closes(r["ticker"])
         by_member.setdefault(mi, []).append([r["ticker"], r["asset_type"], r["owner"], r["tx"], r["trade_date"], r["filed"],
-                                             int(r["amount_lo"]), int(r["amount_hi"]), r["asset"]])
+                                             int(r["amount_lo"]), int(r["amount_hi"]), r["asset"], close_at(c, r["trade_date"])])
         if r["tx"] != "P":
             continue
-        c = closes(r["ticker"])
         exit_ = next((s for s in sells.get((r["member"], r["ticker"]), []) if s[0] > r["trade_date"]), None)
         entry_d = next_day(r["filed"])
         exit_d = next_day(exit_[1]) if exit_ else None
@@ -151,17 +160,18 @@ def main() -> None:
             missing += 1
         out.append([mi, r["ticker"], r["asset_type"], r["owner"], r["trade_date"], r["filed"], int(r["amount_lo"]), int(r["amount_hi"]),
                     exit_[0] if exit_ else "", rt, rd,
-                    ret(spy, r["trade_date"], exit_[0] if exit_ else None), ret(spy, entry_d, exit_d)])
+                    ret(spy, r["trade_date"], exit_[0] if exit_ else None), ret(spy, entry_d, exit_d),
+                    close_at(c, r["trade_date"]), close_at(c, exit_[0] if exit_ else None), close_at(c, entry_d), close_at(c, exit_d)])
 
     rnd = lambda v: None if v is None else round(v, 4)
-    out = [t[:9] + [rnd(v) for v in t[9:]] for t in out]
+    out = [t[:9] + [rnd(v) for v in t[9:13]] + t[13:] for t in out]
     out.sort(key=lambda t: (t[4], t[5]), reverse=True)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "members").mkdir(exist_ok=True)
     (OUT / "house.json").write_text(json.dumps({
         "asof": DATES[-1], "members": members, "trades": out,
         "fields": ["member", "ticker", "asset_type", "owner", "trade_date", "filed", "amount_lo", "amount_hi", "exit_date",
-                   "ret_trade", "ret_filed", "spy_trade", "spy_filed"],
+                   "ret_trade", "ret_filed", "spy_trade", "spy_filed", "px_in_trade", "px_out_trade", "px_in_filed", "px_out_filed"],
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     for mi, trades in by_member.items():
         trades.sort(key=lambda t: t[4], reverse=True)
