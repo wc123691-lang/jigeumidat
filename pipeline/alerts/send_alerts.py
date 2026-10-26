@@ -12,6 +12,11 @@
 - 사용자마다 '어디까지 알렸나'(마지막 공시일)는 alert_state의 '__insider__' 줄에 둔다 (표를 새로 만들지 않으려고).
   처음에는 기준만 기록하고 알리지 않는다.
 
+시장 알림도 보낸다 (별도 푸시): 공포·탐욕 지수가 극단적 공포(25 미만)나 극단적 탐욕(75 초과) 구간에 '새로' 들어간 날.
+- 사용자가 끄면 base_settings의 "marketAlert"가 false다 (예전 앱은 이 값이 없어 켠 것으로 본다).
+- 구간 경계에서 매일 들락날락하며 여러 번 울리지 않게, 나올 때는 10점 여유를 둔다 (공포는 35 이상이 돼야 벗어남).
+- 사용자마다 지금 구간은 alert_state의 '__market__' 줄에 둔다 (공포 = zone 'buy', 탐욕 = 'sell'). 처음에는 기록만 한다.
+
 공개 저장소이므로 로그에는 개수만 남기고 사용자 정보는 찍지 않는다.
 비밀 키는 GitHub Secrets(SUPABASE_URL, SUPABASE_SECRET_KEY)로만 받는다. 없으면 아무것도 하지 않고 끝낸다.
 
@@ -32,6 +37,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SIGNALS = ROOT / "data" / "signals"
 INSIDER = ROOT / "data" / "insider" / "by_ticker"
 INSIDER_KEY = "__insider__"
+MARKET_KEY = "__market__"
+FEAR, GREED, HYSTERESIS = 25, 75, 10  # 앱의 '극단적 공포'·'극단적 탐욕' 경계와 같다
 EXPO_PUSH = "https://exp.host/--/api/v2/push/send"
 PAGE = 1000
 FIELD_TO_KEY = {"s_rsi": "rsi", "s_bb": "bb", "s_gap": "gap", "s_trend": "trend", "s_dd": "dd", "s_ins": "ins",
@@ -76,6 +83,21 @@ def insider_file(ticker: str) -> Path:
     """윈도우 예약 이름 티커(CON 등)는 _CON.json (pipeline/insider/history.py와 같은 규칙)."""
     reserved = ticker in ("CON", "PRN", "AUX", "NUL") or (len(ticker) == 4 and ticker[:3] in ("COM", "LPT") and ticker[3].isdigit())
     return INSIDER / (("_" if reserved else "") + ticker + ".json")
+
+
+def market_zone(fg: float, prev: str | None) -> str:
+    """공포 = 'buy', 탐욕 = 'sell', 그 사이 = 'neutral'. 이미 구간 안이면 HYSTERESIS만큼 벗어나야 나온다."""
+    if fg < FEAR or (prev == "buy" and fg < FEAR + HYSTERESIS):
+        return "buy"
+    if fg > GREED or (prev == "sell" and fg > GREED - HYSTERESIS):
+        return "sell"
+    return "neutral"
+
+
+def market_message(zone: str, fg: float) -> str:
+    if zone == "buy":
+        return f"시장이 극단적 공포 구간에 들어왔어요 (공포·탐욕 {round(fg)}). 내 종목의 신호가 매수 기준에 가까워졌는지 확인해 보세요."
+    return f"시장이 극단적 탐욕 구간에 들어왔어요 (공포·탐욕 {round(fg)}). 들뜬 시장이에요, 매도 기준과 처음 정한 약속을 확인해 보세요."
 
 
 def compact_usd(v: float) -> str:
@@ -204,7 +226,27 @@ def main() -> None:
                              "sound": "default", "channelId": "signals", "data": {"screen": "Insider"}})
             insider_messages += 1
 
-    print(f"{today} 알림 대상 {len(profiles)}명 · 종목 상태 {len(updates)}건(처음 {first_seen}) · 보낼 알림 {len(messages)}건(내부자 {insider_messages})")
+    # 시장: 공포·탐욕 지수가 극단적 구간에 새로 들어간 날 (모든 사용자에게 같은 값)
+    market_messages = 0
+    fg = market.get("fear_greed")
+    if isinstance(fg, (int, float)):
+        for p in profiles:
+            if (p["base_settings"] or {}).get("marketAlert") is False:
+                continue
+            prev = state.get((p["user_id"], MARKET_KEY))
+            if prev and prev["signal_date"] == today:
+                continue
+            zone = market_zone(fg, prev["zone"] if prev else None)
+            if prev is None:
+                first_seen += 1  # 처음: 지금 구간만 기록
+            elif zone != prev["zone"] and zone != "neutral" and p.get("push_token"):
+                messages.append({"to": p["push_token"], "title": "지금이닷 · 시장", "body": market_message(zone, fg),
+                                 "sound": "default", "channelId": "signals", "data": {"screen": "MarketCheck"}})
+                market_messages += 1
+            updates.append({"user_id": p["user_id"], "symbol": MARKET_KEY, "zone": zone, "score": round(fg, 1), "signal_date": today})
+
+    print(f"{today} 알림 대상 {len(profiles)}명 · 종목 상태 {len(updates)}건(처음 {first_seen}) · 보낼 알림 {len(messages)}건"
+          f"(내부자 {insider_messages}, 시장 {market_messages})")
     if args.dry_run:
         return
     dead = send_push(messages) if messages else []
