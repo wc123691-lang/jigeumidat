@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>지금이닷 · 이 종목은 이런 종목이었어요</title>
+<meta name="description" content="미국 주식 종목이 과거에 어떤 신호에 잘 반응했는지, 지금이닷이 2,000여 개 설정을 시험해 찾았어요.">
+<meta property="og:title" content="🔍 이 종목은 이런 종목이었어요 · 지금이닷">
+<meta property="og:description" content="과거 데이터로 찾은 종목의 성격. 내 종목도 분석해 보세요.">
+<meta property="og:image" content="https://wc123691-lang.github.io/jigeumidat/r/og.png">
+<meta property="og:type" content="website">
+<style>
+  /* 앱(지금이닷)과 같은 어두운 화면. 결과는 주소의 # 뒤에서 읽어, 서버로 보내지 않는다. */
+  :root { --bg: #0f1115; --surface: #1a1d24; --inset: #14171d; --text: #f2f3f5; --sub: #a0a6b1; --muted: #c9ced6; --accent: #ffc93c; --gain: #ff6b6b; --loss: #6aa2ff; --border: #343a46; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; line-height: 1.6; }
+  main { max-width: 520px; margin: 0 auto; padding: 24px 16px 48px; display: flex; flex-direction: column; gap: 14px; }
+  .brand { font-weight: 800; font-size: 16px; } .brand i { color: var(--accent); font-style: normal; }
+  .card { background: var(--surface); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .hero { border: 2px solid var(--accent); }
+  .hint { color: var(--sub); font-size: 13px; }
+  h1 { font-size: 22px; margin: 0; line-height: 1.4; }
+  .label { font-size: 13px; font-weight: 700; } .fit { color: var(--gain); } .unfit { color: var(--loss); }
+  ol { margin: 0; padding-left: 20px; } li { margin: 4px 0; } li b { color: var(--text); } li span { color: var(--sub); font-size: 13px; display: block; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; }
+  .row .v { font-weight: 800; font-size: 17px; } .row.me .v { font-size: 22px; } .pos { color: var(--gain); } .neg { color: var(--loss); }
+  .warn { border: 1px solid var(--accent); border-radius: 12px; padding: 12px; } .warn b { color: var(--accent); }
+  .cta { display: block; text-align: center; background: var(--accent); color: #14161b; font-weight: 800; font-size: 16px; padding: 16px; border-radius: 14px; text-decoration: none; }
+  .empty { text-align: center; padding: 48px 0; }
+</style>
+</head>
+<body>
+<main id="app">
+  <div class="brand">지금이닷<i>.</i></div>
+  <div class="card empty">리포트를 불러오지 못했어요. 링크를 다시 확인해 주세요.</div>
+</main>
+<script>
+  // 앱 src/signals.ts의 신호 이름·설명과 같다
+  const SIGNALS = {
+    fg: ['공포·탐욕 지수', '시장이 겁먹을수록 매수 쪽'], vix: ['시장 변동성', '크게 출렁일수록 매수 쪽'], fx: ['원/달러 환율', '달러가 쌀수록 매수 쪽'],
+    spx: ['S&P500 200일선', '시장이 오르는 흐름일 때 매수 쪽'], rsi: ['RSI', '짧은 기간 많이 떨어지면 매수 쪽'], bb: ['볼린저밴드 위치', '최근 가격대의 아래쪽이면 매수 쪽'],
+    gap: ['200일선 아래 괴리', '평균보다 많이 싸면 매수 쪽'], trend: ['200일선 위 추세', '오르는 흐름이면 매수 쪽'], ins: ['내부자 매수', '임원·이사가 사면 매수 쪽'],
+    dd: ['52주 고점 대비 하락', '1년 고점보다 많이 빠지면 매수 쪽'],
+  };
+  const PRESET = { steady: '보수적 장기투자', contra: '역발상 매수', trend: '추세 추종 스윙' };
+  const PLAY = 'https://play.google.com/store/apps/details?id=com.jigeumidat.app';
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pct = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v)).toLocaleString('ko-KR')}%`;
+  const ym = (s) => `${s.slice(0, 4)}.${Number(s.slice(5, 7))}`;
+
+  const q = new URLSearchParams(location.hash.slice(1));
+  const num = (k) => Number(q.get(k));
+  const sym = (q.get('s') || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 8);
+  const fit = (q.get('fit') || '').split(',').filter((k) => SIGNALS[k]);
+  const unfit = (q.get('un') || '').split(',').filter((k) => SIGNALS[k]);
+  if (sym && fit.length && Number.isFinite(num('tot'))) {
+    const ref = (q.get('ref') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
+    const link = ref ? `${PLAY}&referrer=${encodeURIComponent('ref=' + ref)}` : PLAY;
+    const row = (name, v, dd, me) => `<div class="row${me ? ' me' : ''}"><span>${name}</span><span><span class="v ${v >= 0 ? 'pos' : 'neg'}">${pct(v)}</span>${dd !== null && Number.isFinite(dd) ? ` <span class="hint">낙폭 ${pct(dd)}</span>` : ''}</span></div>`;
+    document.title = `${sym}는 이런 종목이었어요 · 지금이닷`;
+    document.getElementById('app').innerHTML = `
+      <div class="brand">지금이닷<i>.</i> <span class="hint">종목 과거 맞춤 설정 리포트</span></div>
+      <div class="card hero">
+        <div class="hint">${esc(ym(q.get('f') || ''))} ~ ${esc(ym(q.get('t') || ''))} 분석 · 설정 2,000여 개 시험${q.get('rk') ? ` · ${esc(q.get('rk'))}` : ''}</div>
+        <h1>🔍 ${esc(sym)}는 이런 종목이었어요</h1>
+        <div class="label fit">잘 맞았던 신호</div>
+        <ol>${fit.map((k) => `<li><b>${SIGNALS[k][0]}</b><span>${SIGNALS[k][1]}</span></li>`).join('')}</ol>
+        <div class="label unfit">잘 안 맞았던 신호</div>
+        <div>${unfit.map((k) => SIGNALS[k][0]).join(', ') || '-'}</div>
+      </div>
+      <div class="card">
+        <div class="label">과거 성적 비교</div>
+        ${row(`가장 좋았던 프리셋 (${PRESET[q.get('pn')] || '프리셋'})`, num('pre'), null, false)}
+        ${row('맞춤 설정', num('tot'), num('dd'), true)}
+        ${row('계속 보유', num('h'), num('hdd'), false)}
+      </div>
+      <div class="warn"><b>과거에 맞춘 설정이에요.</b> <span class="hint">결과를 다 알고 고른 설정이라 앞으로는 덜 맞는 경우가 많았어요. 2017~2022년으로 찾은 설정을 2023년 이후에 적용했더니, 시험한 6개 종목 모두 계속 보유보다 낮았어요. 투자 권유가 아니에요. 수수료·세금·환율 제외. Data provided for free by IEX.</span></div>
+      <a class="cta" href="${link}">내 종목도 분석해 보기 →</a>
+      <div class="hint" style="text-align:center">지금이닷 · 왜 샀는지 기록하고, 내가 정한 신호로 확인하는 미국 주식 매매일지</div>`;
+  }
+</script>
+</body>
+</html>
