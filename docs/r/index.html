@@ -21,7 +21,7 @@
   .hint { color: var(--sub); font-size: 13px; }
   h1 { font-size: 22px; margin: 0; line-height: 1.4; }
   .label { font-size: 13px; font-weight: 700; } .fit { color: var(--gain); } .unfit { color: var(--loss); }
-  ol { margin: 0; padding-left: 20px; } li { margin: 4px 0; } li b { color: var(--text); } li span { color: var(--sub); font-size: 13px; display: block; }
+  ol { margin: 0; padding-left: 20px; } li { margin: 4px 0; } ul li b { color: var(--muted); } li b { color: var(--text); } li span { color: var(--sub); font-size: 13px; display: block; }
   .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; }
   .row .v { font-weight: 800; font-size: 17px; } .row.me .v { font-size: 22px; } .pos { color: var(--gain); } .neg { color: var(--loss); }
   .warn { border: 1px solid var(--accent); border-radius: 12px; padding: 12px; } .warn b { color: var(--accent); }
@@ -66,7 +66,8 @@
         <div class="label fit">잘 맞았던 신호</div>
         <ol>${fit.map((k) => `<li><b>${SIGNALS[k][0]}</b><span>${SIGNALS[k][1]}</span></li>`).join('')}</ol>
         <div class="label unfit">잘 안 맞았던 신호</div>
-        <div>${unfit.map((k) => SIGNALS[k][0]).join(', ') || '-'}</div>
+        <ul style="margin:0;padding-left:20px">${unfit.map((k) => `<li><b>${SIGNALS[k][0]}</b><span>${SIGNALS[k][1]}</span></li>`).join('') || '<li>-</li>'}</ul>
+        <div class="hint">잘 맞았던 설정들이 거의 보지 않은 신호예요. 이 종목에서는 이 신호대로 사고팔면 오히려 덜 맞았다는 뜻이에요.</div>
       </div>
       <div class="card">
         <div class="label">과거 성적 비교</div>
