@@ -1,0 +1,22 @@
+name: Senate eFD probe
+
+# 상원 eFD가 미국 서버에서 열리는지 한 번 확인한다 (한국 IP는 403). 성공하면 수집 작업으로 바꾼다.
+on:
+  push:
+    paths:
+      - pipeline/congress/senate_probe.py
+      - .github/workflows/senate_probe.yml
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: pipeline/congress
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python pipeline/congress/senate_probe.py
