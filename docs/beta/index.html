@@ -78,7 +78,9 @@
   .check span { color: var(--sub); font-size: 15px; }
   .progress { font-size: 15px; color: var(--sub); margin: 0 0 12px; text-align: center; }
   .note { font-size: 14px; color: var(--muted); margin-top: 12px; text-align: center; }
-  .signin { display: flex; justify-content: center; min-height: 56px; }
+  .signin { display: flex; justify-content: center; min-height: 44px; }
+  .stepbox { display: grid; gap: 14px; padding: 20px; border: 2px solid var(--brand); border-radius: 16px; }
+  .stephead { margin: 0; } .stephead b { display: block; font-size: 18px; } .stephead span { color: var(--sub); font-size: 15px; }
   .form { display: grid; gap: 12px; padding: 20px; border: 2px solid var(--ok); border-radius: 16px; background: #effaf3; }
   .form .field { display: grid; gap: 4px; font-size: 15px; font-weight: 700; }
   .form .field input { font: inherit; font-weight: 400; font-size: 17px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
@@ -254,8 +256,9 @@
     <p class="progress" id="progress">5개 중 0개 확인했어요</p>
     <div class="inapp" id="inapp" hidden>카카오톡·인스타그램 같은 앱 안에서는 구글 로그인이 막혀 있어요. <a id="openChrome" href="#">크롬으로 열기 →</a></div>
     <button class="btn block" id="applyBtn" disabled>구글 계정으로 신청하기</button>
-    <div class="signin" id="signin" hidden></div>
+    <div class="stepbox" id="signinBox" hidden><p class="stephead"><b>1/2 · 구글 계정으로 로그인해 주세요</b><span>테스트 초대를 받을 구글 계정을 골라 주세요. 폰 Play 스토어에 로그인된 계정이면 좋아요.</span></p><div class="signin" id="signin"></div></div>
     <div class="form" id="form" hidden>
+      <p class="stephead"><b>✅ 로그인됐어요! 2/2 · 마지막 단계예요</b><span>내용을 확인하고 동의를 체크한 뒤 [신청 완료]를 눌러 주세요.</span></p>
       <label class="field">이메일 (테스트 초대가 가는 주소)<input id="email" readonly></label>
       <label class="field">이름<input id="name" maxlength="40" autocomplete="name"></label>
       <label class="field">사용하는 휴대폰 (선택)<input id="phone" maxlength="40" placeholder="예: 갤럭시 S24"></label>
@@ -321,16 +324,17 @@
     const c = claims(credential);
     $('email').value = c.email;
     $('name').value = c.name || '';
-    $('signin').hidden = true;
+    $('signinBox').hidden = true;
     $('form').hidden = false;
     $('applyNote').hidden = true;
+    $('form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   btn.addEventListener('click', () => {
     if (!CLIENT_ID || !SCRIPT_URL || !window.google?.accounts) { alert('신청서를 준비하고 있어요. 조금만 기다려 주세요!'); return; }
     boxes.forEach((b) => (b.disabled = true));
     btn.hidden = true;
-    $('signin').hidden = false;
+    $('signinBox').hidden = false;
     google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onLogin });
     google.accounts.id.renderButton($('signin'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: Math.min(360, $('signin').clientWidth) });
   });
@@ -349,6 +353,7 @@
       if (!r.ok) throw new Error(r.error);
       $('form').hidden = true;
       $('done').hidden = false;
+      $('done').scrollIntoView({ behavior: 'smooth', block: 'center' });
       if (r.dup) { $('doneTitle').textContent = '이미 신청하셨어요 🙌'; $('doneText').textContent = '테스트가 열리면 이 구글 이메일로 참여 링크를 보내드릴게요.'; }
     } catch {
       alert('신청을 보내지 못했어요. 잠시 뒤 다시 눌러 주세요. 계속 안 되면 jigeumidat.app@gmail.com 으로 알려 주세요.');
