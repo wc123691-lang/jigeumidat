@@ -336,8 +336,21 @@
     $('form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  btn.addEventListener('click', () => {
-    if (!CLIENT_ID || !SCRIPT_URL || !window.google?.accounts) { alert('신청서를 준비하고 있어요. 조금만 기다려 주세요!'); return; }
+  // 구글 로그인 스크립트는 async라 페이지가 다 뜨기 전에 누르면 아직 없다 → 최대 10초 기다린다
+  const gsiReady = async () => {
+    for (let i = 0; i < 50 && !window.google?.accounts; i++) await new Promise((r) => setTimeout(r, 200));
+    return !!window.google?.accounts;
+  };
+
+  btn.addEventListener('click', async () => {
+    if (!CLIENT_ID || !SCRIPT_URL) { alert('신청서를 준비하고 있어요. 조금만 기다려 주세요!'); return; }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '불러오는 중…';
+    const ok = await gsiReady();
+    btn.textContent = label;
+    btn.disabled = false;
+    if (!ok) { alert('구글 로그인을 불러오지 못했어요. 페이지를 새로고침하거나 크롬·사파리에서 열어 주세요.'); return; }
     boxes.forEach((b) => (b.disabled = true));
     btn.hidden = true;
     $('signinBox').hidden = false;
