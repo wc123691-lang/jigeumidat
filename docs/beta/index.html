@@ -44,13 +44,9 @@
   .btn:disabled { background: #e6e8ec; color: #9aa1ab; cursor: not-allowed; }
   .btn.block { width: 100%; }
 
-  /* 색: 카드마다 6가지를 돌아가며 (연한 배경 --t, 띠 --c, 진한 글자 --d) */
+  /* 색: 두 가지만. 이런 분께는 왼쪽 열 노랑·오른쪽 열 파랑, 기능은 번갈아 (연한 배경 --t, 띠 --c, 진한 글자 --d) */
   .who li, .feature { --t: #fff5d1; --c: #f5b800; --d: #8a6100; }
-  .who li:nth-child(6n+2), .feature:nth-of-type(6n+2) { --t: #e8f1ff; --c: #3b82f6; --d: #1e4fa8; }
-  .who li:nth-child(6n+3), .feature:nth-of-type(6n+3) { --t: #e6f6ec; --c: #22a55a; --d: #146b3a; }
-  .who li:nth-child(6n+4), .feature:nth-of-type(6n+4) { --t: #ffebee; --c: #ef5a6f; --d: #a82638; }
-  .who li:nth-child(6n+5), .feature:nth-of-type(6n+5) { --t: #efeaff; --c: #7c5cff; --d: #4b30b8; }
-  .who li:nth-child(6n+6), .feature:nth-of-type(6n+6) { --t: #ffefe0; --c: #f08a24; --d: #9a4f08; }
+  .who li:nth-child(even), .feature:nth-of-type(odd) { --t: #e8f1ff; --c: #3b82f6; --d: #1e4fa8; }
   main h2::before { content: ''; display: block; width: 40px; height: 6px; border-radius: 3px; background: var(--accent); margin-bottom: 14px; }
 
   /* 이런 분께 */
