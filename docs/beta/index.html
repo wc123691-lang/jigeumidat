@@ -78,6 +78,18 @@
   .check span { color: var(--sub); font-size: 15px; }
   .progress { font-size: 15px; color: var(--sub); margin: 0 0 12px; text-align: center; }
   .note { font-size: 14px; color: var(--muted); margin-top: 12px; text-align: center; }
+  .signin { display: flex; justify-content: center; min-height: 56px; }
+  .form { display: grid; gap: 12px; padding: 20px; border: 2px solid var(--ok); border-radius: 16px; background: #effaf3; }
+  .form .field { display: grid; gap: 4px; font-size: 15px; font-weight: 700; }
+  .form .field input { font: inherit; font-weight: 400; font-size: 17px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  .form .field input:read-only { color: var(--sub); background: var(--soft); }
+  .form .check { margin: 0; }
+  .form .check label { background: #fff; }
+  .done { padding: 24px 20px; border-radius: 16px; background: var(--soft); text-align: center; }
+  .done b { display: block; font-size: 20px; margin-bottom: 6px; }
+  .inapp { padding: 16px; border-radius: 14px; background: #fff4d1; font-size: 15px; margin-bottom: 16px; }
+  .inapp a { font-weight: 800; }
+  [hidden] { display: none !important; }
 
   details { border-bottom: 1px solid var(--line); padding: 14px 0; }
   summary { font-weight: 700; cursor: pointer; }
@@ -240,8 +252,18 @@
       <label><input type="checkbox" required><div><b>투자 권유 앱이 아니라는 걸 알아요</b><span>지금이닷은 내 기록과 내가 정한 기준을 보여주는 도구예요. 투자 판단과 책임은 나에게 있어요.</span></div></label>
     </form>
     <p class="progress" id="progress">5개 중 0개 확인했어요</p>
+    <div class="inapp" id="inapp" hidden>카카오톡·인스타그램 같은 앱 안에서는 구글 로그인이 막혀 있어요. <a id="openChrome" href="#">크롬으로 열기 →</a></div>
     <button class="btn block" id="applyBtn" disabled>구글 계정으로 신청하기</button>
-    <p class="note">신청서는 구글 설문지로 열려요. 구글 로그인 후 이름과 이메일이 신청 명단에 저장되고, 테스트 안내 외에는 쓰지 않아요.</p>
+    <div class="signin" id="signin" hidden></div>
+    <div class="form" id="form" hidden>
+      <label class="field">이메일 (테스트 초대가 가는 주소)<input id="email" readonly></label>
+      <label class="field">이름<input id="name" maxlength="40" autocomplete="name"></label>
+      <label class="field">사용하는 휴대폰 (선택)<input id="phone" maxlength="40" placeholder="예: 갤럭시 S24"></label>
+      <div class="check"><label><input type="checkbox" id="agree"><div><b>개인정보 수집·이용에 동의해요</b><span>이름·이메일·휴대폰 기종을 베타 테스트 안내에만 쓰고, 정식 출시 3개월 뒤 지워요.</span></div></label></div>
+      <button class="btn block" id="submitBtn" disabled>신청 완료</button>
+    </div>
+    <div class="done" id="done" hidden><b id="doneTitle">신청이 완료됐어요 🎉</b><span id="doneText">테스트가 열리면 위 구글 이메일로 참여 링크를 보내드릴게요.</span></div>
+    <p class="note" id="applyNote">구글 계정으로 로그인하면 이름과 이메일이 자동으로 채워져요. 비밀번호나 다른 정보는 받지 않아요.</p>
   </div>
 </section>
 
@@ -265,23 +287,75 @@
   </div>
 </footer>
 
+<script src="https://accounts.google.com/gsi/client" async></script>
 <script>
-  // 신청서(구글 설문지) 주소. 설문지를 만든 뒤 여기에 넣는다. 비어 있으면 '준비 중'으로 안내한다.
-  const FORM_URL = 'https://docs.google.com/forms/d/15VVD0z7tMpUdESNL74e2uVw890F4P3-YLKXcpBxufO4/viewform';
+  // 구글 로그인(Google Identity Services)으로 받은 ID 토큰을 Apps Script 웹 앱(beta/signup.gs)에 보내면,
+  // 거기서 토큰을 구글에 확인한 뒤 신청 시트에 한 줄을 쓴다. 둘 중 하나라도 비어 있으면 '준비 중'으로 안내한다.
+  const CLIENT_ID = '';
+  const SCRIPT_URL = '';
+  const $ = (id) => document.getElementById(id);
   const boxes = [...document.querySelectorAll('#checks input')];
-  const btn = document.getElementById('applyBtn');
-  const progress = document.getElementById('progress');
+  const btn = $('applyBtn');
+  let token = null;
+
+  // 카카오톡 등 앱 안 브라우저에서는 구글이 로그인을 막는다 → 카카오톡은 바깥 브라우저로 바로 열고, 나머지는 크롬 열기 안내
+  const ua = navigator.userAgent;
+  if (/KAKAOTALK/i.test(ua)) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+  else if (/; wv\)|Instagram|FBAN|FBAV|NAVER|Line\//i.test(ua)) {
+    $('inapp').hidden = false;
+    $('openChrome').href = `intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end`;
+  }
+
   const update = () => {
     const n = boxes.filter((b) => b.checked).length;
     btn.disabled = n < boxes.length;
-    progress.textContent = n < boxes.length ? `${boxes.length}개 중 ${n}개 확인했어요` : '모두 확인했어요! 신청해 주세요 🙌';
+    $('progress').textContent = n < boxes.length ? `${boxes.length}개 중 ${n}개 확인했어요` : '모두 확인했어요! 신청해 주세요 🙌';
   };
   boxes.forEach((b) => b.addEventListener('change', update));
-  btn.addEventListener('click', () => {
-    if (!FORM_URL) { alert('신청서를 준비하고 있어요. 조금만 기다려 주세요!'); return; }
-    window.open(FORM_URL, '_blank', 'noopener');
-  });
   update();
+
+  // ID 토큰 가운데 부분(이름·이메일)을 읽어 화면에 채운다. 진짜인지는 Apps Script가 구글에 확인한다.
+  const claims = (jwt) => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))));
+  const onLogin = ({ credential }) => {
+    token = credential;
+    const c = claims(credential);
+    $('email').value = c.email;
+    $('name').value = c.name || '';
+    $('signin').hidden = true;
+    $('form').hidden = false;
+    $('applyNote').hidden = true;
+  };
+
+  btn.addEventListener('click', () => {
+    if (!CLIENT_ID || !SCRIPT_URL || !window.google?.accounts) { alert('신청서를 준비하고 있어요. 조금만 기다려 주세요!'); return; }
+    boxes.forEach((b) => (b.disabled = true));
+    btn.hidden = true;
+    $('signin').hidden = false;
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onLogin });
+    google.accounts.id.renderButton($('signin'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: Math.min(360, $('signin').clientWidth) });
+  });
+
+  const canSubmit = () => ($('submitBtn').disabled = !($('agree').checked && $('name').value.trim()));
+  $('agree').addEventListener('change', canSubmit);
+  $('name').addEventListener('input', canSubmit);
+
+  $('submitBtn').addEventListener('click', async () => {
+    $('submitBtn').disabled = true;
+    $('submitBtn').textContent = '보내는 중…';
+    try {
+      // Content-Type을 text/plain으로 두어야(기본값) 미리 묻기(CORS preflight) 없이 Apps Script로 간다
+      const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ token, name: $('name').value.trim(), phone: $('phone').value.trim() }) });
+      const r = await res.json();
+      if (!r.ok) throw new Error(r.error);
+      $('form').hidden = true;
+      $('done').hidden = false;
+      if (r.dup) { $('doneTitle').textContent = '이미 신청하셨어요 🙌'; $('doneText').textContent = '테스트가 열리면 이 구글 이메일로 참여 링크를 보내드릴게요.'; }
+    } catch {
+      alert('신청을 보내지 못했어요. 잠시 뒤 다시 눌러 주세요. 계속 안 되면 jigeumidat.app@gmail.com 으로 알려 주세요.');
+      $('submitBtn').textContent = '신청 완료';
+      canSubmit();
+    }
+  });
 </script>
 </body>
 </html>
