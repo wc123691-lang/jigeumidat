@@ -3,7 +3,7 @@
 // '신청자' 시트에 한 줄을 쓴다. 같은 이메일은 한 번만 쓴다.
 // 배포: 배포 → 새 배포 → 웹 앱, 실행: 나, 액세스 권한: 모든 사용자.
 
-const CLIENT_ID = '여기에_OAuth_클라이언트_ID';
+const CLIENT_ID = '542908652380-9fgerpmh8nsahoo655aajb9qopskqpdv.apps.googleusercontent.com';
 const SHEET = '신청자';
 
 function doPost(e) {

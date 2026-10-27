@@ -291,8 +291,8 @@
 <script>
   // 구글 로그인(Google Identity Services)으로 받은 ID 토큰을 Apps Script 웹 앱(beta/signup.gs)에 보내면,
   // 거기서 토큰을 구글에 확인한 뒤 신청 시트에 한 줄을 쓴다. 둘 중 하나라도 비어 있으면 '준비 중'으로 안내한다.
-  const CLIENT_ID = '';
-  const SCRIPT_URL = '';
+  const CLIENT_ID = '542908652380-9fgerpmh8nsahoo655aajb9qopskqpdv.apps.googleusercontent.com';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwKU6XjwaTu1uv_WtBMmwg9hvPTiTMNJFJM6amJY815VF_Bm2lB3HSl3vFMKh3twdxH/exec';
   const $ = (id) => document.getElementById(id);
   const boxes = [...document.querySelectorAll('#checks input')];
   const btn = $('applyBtn');
