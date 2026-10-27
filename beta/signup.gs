@@ -14,8 +14,8 @@ const SHEET = '신청자';
 const COLS = ['신청 시각', '이름', '이메일', '휴대폰', '초대 보냄', '중간 안내'];
 
 // 테스트를 열면 채운다. 둘 다 있어야 참여 안내를 보낸다.
-const GROUP_URL = ''; // 테스터 구글 그룹 (Play Console 비공개 테스트의 테스터로 등록한 그룹)
-const OPTIN_URL = ''; // Play Console 비공개 테스트의 '테스터 참여 링크'
+const GROUP_URL = 'https://groups.google.com/g/jigeumidat-beta'; // 테스터 구글 그룹 (Play Console 비공개 테스트의 테스터로 등록한 그룹)
+const OPTIN_URL = 'https://play.google.com/apps/testing/com.jigeumidat.app'; // Play Console 비공개 테스트의 '테스터 참여 링크'
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.jigeumidat.app';
 // Gmail 설정 '다른 주소에서 메일 보내기'에 이 주소가 있으면 이 주소로 보낸다. 없으면 내 계정으로 보내고 답장만 이 주소로.
 const FROM = 'jigeumidat.app@gmail.com';
