@@ -44,17 +44,26 @@
   .btn:disabled { background: #e6e8ec; color: #9aa1ab; cursor: not-allowed; }
   .btn.block { width: 100%; }
 
+  /* 색: 카드마다 6가지를 돌아가며 (연한 배경 --t, 띠 --c, 진한 글자 --d) */
+  .who li, .feature { --t: #fff5d1; --c: #f5b800; --d: #8a6100; }
+  .who li:nth-child(6n+2), .feature:nth-of-type(6n+2) { --t: #e8f1ff; --c: #3b82f6; --d: #1e4fa8; }
+  .who li:nth-child(6n+3), .feature:nth-of-type(6n+3) { --t: #e6f6ec; --c: #22a55a; --d: #146b3a; }
+  .who li:nth-child(6n+4), .feature:nth-of-type(6n+4) { --t: #ffebee; --c: #ef5a6f; --d: #a82638; }
+  .who li:nth-child(6n+5), .feature:nth-of-type(6n+5) { --t: #efeaff; --c: #7c5cff; --d: #4b30b8; }
+  .who li:nth-child(6n+6), .feature:nth-of-type(6n+6) { --t: #ffefe0; --c: #f08a24; --d: #9a4f08; }
+  main h2::before { content: ''; display: block; width: 40px; height: 6px; border-radius: 3px; background: var(--accent); margin-bottom: 14px; }
+
   /* 이런 분께 */
   .who { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
-  .who li { display: flex; gap: 14px; align-items: flex-start; background: var(--soft); border-radius: 16px; padding: 18px 18px; }
+  .who li { display: flex; gap: 14px; align-items: flex-start; background: var(--t); border-left: 6px solid var(--c); border-radius: 16px; padding: 18px 18px; }
   .who .ico { flex: none; width: 40px; height: 40px; border-radius: 12px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; }
   .who .ico:empty { display: none; }
-  .who b { display: block; font-size: 17px; }
-  .who span { color: var(--sub); font-size: 15px; }
+  .who b { display: block; font-size: 17px; color: var(--d); }
+  .who span { color: #4a505a; font-size: 15px; }
 
   /* 기능 */
-  .feature { border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 14px; }
-  .feature .tag { display: inline-block; font-size: 13px; font-weight: 700; color: var(--sub); background: var(--soft); border-radius: 8px; padding: 2px 8px; margin-bottom: 8px; }
+  .feature { border: 1px solid var(--line); border-left: 6px solid var(--c); border-radius: 18px; padding: 22px; margin-bottom: 14px; }
+  .feature .tag { display: inline-block; font-size: 13px; font-weight: 700; color: var(--d); background: var(--t); border-radius: 8px; padding: 2px 8px; margin-bottom: 8px; }
   .feature p { margin: 0 0 10px; color: var(--sub); }
   .feature .how { background: #fffaea; border-radius: 12px; padding: 12px 14px; font-size: 15px; color: #4a3c10; }
   .feature .how b { color: #7a5800; }
@@ -64,7 +73,7 @@
   /* 진행 방식 */
   .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
   .steps li { counter-increment: s; position: relative; padding: 16px 16px 16px 60px; background: var(--soft); border-radius: 16px; }
-  .steps li::before { content: counter(s); position: absolute; left: 16px; top: 16px; width: 30px; height: 30px; border-radius: 50%; background: var(--brand); color: #fff;
+  .steps li::before { content: counter(s); position: absolute; left: 16px; top: 16px; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
     font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 15px; }
   .steps b { display: block; }
   .steps span { color: var(--sub); font-size: 15px; }
