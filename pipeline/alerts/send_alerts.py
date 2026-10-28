@@ -25,6 +25,7 @@
 푸시 토큰이 있는 모든 사용자에게 같은 문구를 보낸다. '알림 받기'(enabled)와 상관없고, 끈 사용자는 base_settings의
 "dailyUpdate"가 false다 (예전 앱은 이 값이 없어 켠 것으로 본다).
 - 신호 날짜가 어제(UTC)가 아니면(휴장일, 데이터가 아직 안 나옴) 보내지 않는다.
+- 금요일 장 데이터(한국 토요일 밤)는 주말이라 바로 거래할 수 없으니 월요일 장을 준비하자는 문구로 보낸다.
 
 공개 저장소이므로 로그에는 개수만 남기고 사용자 정보는 찍지 않는다.
 비밀 키는 GitHub Secrets(SUPABASE_URL, SUPABASE_SECRET_KEY)로만 받는다. 없으면 아무것도 하지 않고 끝낸다.
@@ -189,7 +190,10 @@ def daily_update(db: Supabase, dry_run: bool) -> None:
         print(f"신호 날짜 {d}가 어제({expected})가 아니라 매일 업데이트 알림을 건너뜁니다 (휴장일이거나 데이터가 아직 없음).")
         return
     profiles = db.all("alert_profiles", "select=push_token,base_settings&push_token=not.is.null")
-    messages = [{"to": p["push_token"], "title": "지금이닷", "body": "오늘의 미국주식 신호가 업데이트됐어요. 내 종목 신호를 확인해 보세요.",
+    friday = datetime.strptime(d, "%Y%m%d").weekday() == 4
+    body = ("금요일 미국장까지 반영한 신호가 업데이트됐어요. 주말 동안 내 종목 신호를 살펴보고 다음 주 장을 준비해 보세요." if friday
+            else "오늘의 미국주식 신호가 업데이트됐어요. 내 종목 신호를 확인해 보세요.")
+    messages = [{"to": p["push_token"], "title": "지금이닷", "body": body,
                  "sound": "default", "channelId": "signals", "data": {"screen": "Home"}}
                 for p in profiles if (p["base_settings"] or {}).get("dailyUpdate") is not False]
     print(f"{d} 매일 업데이트 알림: 토큰 {len(profiles)}명 중 {len(messages)}건")
