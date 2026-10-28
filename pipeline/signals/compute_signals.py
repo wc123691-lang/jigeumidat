@@ -300,6 +300,7 @@ def main() -> None:
             "days": len(points),
             "coverage": round(len(points) / len(dates), 3),
             "stale_today": points[-1][2],
+            "close": points[-1][1],
         }
         for key in ("rsi14", "bb_pctb", "bb_width", "bb_squeeze", "sma200_gap", "dd52w",
                     "ins_buyers", "ins_value", "ins_last",
@@ -318,12 +319,12 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
-    # 앱용 작은 파일: 종목별 신호 점수만 (사용자 비중으로 '내 신호'를 앱에서 계산)
-    fields = ["s_rsi", "s_bb", "s_gap", "s_trend", "s_dd", "s_ins", "rsi14"]
+    # 앱용 작은 파일: 종목별 신호 점수 (사용자 비중으로 '내 신호'를 앱에서 계산)와 그날 종가(IEX, 홈 화면 표시용)
+    fields = ["s_rsi", "s_bb", "s_gap", "s_trend", "s_dd", "s_ins", "rsi14", "close"]
     compact = {
         "date": date,
         "fields": fields,
-        "data": {r["symbol"]: [round(r[k], 1) if isinstance(r[k], (int, float)) and not isinstance(r[k], bool) else None
+        "data": {r["symbol"]: [round(r[k], 2 if k == "close" else 1) if isinstance(r[k], (int, float)) and not isinstance(r[k], bool) else None
                                for k in fields] for r in rows},
     }
     (OUT_DIR / "scores_latest.json").write_text(json.dumps(compact, separators=(",", ":")), encoding="utf-8")
