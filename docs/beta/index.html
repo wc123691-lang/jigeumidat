@@ -373,7 +373,7 @@
       $('form').hidden = true;
       $('done').hidden = false;
       $('done').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      if (r.dup) { $('doneTitle').textContent = '이미 신청하셨어요 🙌'; $('doneText').textContent = '테스트가 열리면 이 구글 이메일로 참여 링크를 보내드릴게요.'; }
+      if (r.dup) { $('doneTitle').textContent = '이미 신청하셨어요 🙌'; $('doneText').textContent = '이 구글 이메일로 참여 안내 메일을 보냈어요. 안 보이면 스팸함도 확인해 주세요.'; }
     } catch {
       alert('신청을 보내지 못했어요. 잠시 뒤 다시 눌러 주세요. 계속 안 되면 jigeumidat.app@gmail.com 으로 알려 주세요.');
       $('submitBtn').textContent = '신청 완료';
