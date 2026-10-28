@@ -1,0 +1,31 @@
+name: Daily update push
+
+# 매일 밤 10시(KST, 화~토): 오늘의 신호가 업데이트됐다고 모든 사용자에게 푸시 (앱 알림 화면에서 끌 수 있음).
+# 매일 수집 작업과 같은 concurrency 그룹이라, 수집이 늦어지면 끝날 때까지 기다렸다가 새 데이터로 돈다.
+on:
+  schedule:
+    - cron: "0 13 * * 2-6"
+  workflow_dispatch:
+
+concurrency:
+  group: iex-daily
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline/alerts
+            data/signals/scores_latest.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Send daily update
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python pipeline/alerts/send_alerts.py --daily-update

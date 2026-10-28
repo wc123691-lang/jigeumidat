@@ -21,11 +21,17 @@
 지난 실행 뒤 새로 공시된 거래가 있으면 묶어 알린다. 공시는 data/congress/members/<id>.json (PC 정오 작업이 매일 갱신).
 - 사용자마다 '어디까지 알렸나'(마지막 공시일)는 alert_state의 '__congress__' 줄에 둔다. 처음에는 기준만 기록한다.
 
+매일 업데이트 알림은 따로 돈다 (--daily-update, daily_update.yml이 밤 10시 KST에 실행): 오늘 신호가 새로 계산된 날
+푸시 토큰이 있는 모든 사용자에게 같은 문구를 보낸다. '알림 받기'(enabled)와 상관없고, 끈 사용자는 base_settings의
+"dailyUpdate"가 false다 (예전 앱은 이 값이 없어 켠 것으로 본다).
+- 신호 날짜가 어제(UTC)가 아니면(휴장일, 데이터가 아직 안 나옴) 보내지 않는다.
+
 공개 저장소이므로 로그에는 개수만 남기고 사용자 정보는 찍지 않는다.
 비밀 키는 GitHub Secrets(SUPABASE_URL, SUPABASE_SECRET_KEY)로만 받는다. 없으면 아무것도 하지 않고 끝낸다.
 
     python send_alerts.py            # 보내기
     python send_alerts.py --dry-run  # 계산만 (보내지도, 상태를 바꾸지도 않음)
+    python send_alerts.py --daily-update [--dry-run]  # 매일 업데이트 알림만
 """
 
 import argparse
@@ -35,6 +41,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -175,13 +182,36 @@ def send_push(messages: list[dict]) -> list[str]:
     return dead
 
 
+def daily_update(db: Supabase, dry_run: bool) -> None:
+    d = json.loads((SIGNALS / "scores_latest.json").read_text(encoding="utf-8"))["date"]
+    expected = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d")
+    if d != expected:
+        print(f"신호 날짜 {d}가 어제({expected})가 아니라 매일 업데이트 알림을 건너뜁니다 (휴장일이거나 데이터가 아직 없음).")
+        return
+    profiles = db.all("alert_profiles", "select=push_token,base_settings&push_token=not.is.null")
+    messages = [{"to": p["push_token"], "title": "지금이닷", "body": "오늘의 미국주식 신호가 업데이트됐어요. 내 종목 신호를 확인해 보세요.",
+                 "sound": "default", "channelId": "signals", "data": {"screen": "Home"}}
+                for p in profiles if (p["base_settings"] or {}).get("dailyUpdate") is not False]
+    print(f"{d} 매일 업데이트 알림: 토큰 {len(profiles)}명 중 {len(messages)}건")
+    if dry_run or not messages:
+        return
+    dead = send_push(messages)
+    for token in dead:
+        db.call("PATCH", "alert_profiles?push_token=eq." + urllib.parse.quote(token), {"push_token": None}, {"Prefer": "return=minimal"})
+    print(f"보냄 {len(messages)}건 · 만료된 토큰 정리 {len(dead)}건")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--daily-update", action="store_true")
     args = parser.parse_args()
     url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SECRET_KEY")
     if not url or not key:
         print("SUPABASE_URL / SUPABASE_SECRET_KEY가 없어 알림을 건너뜁니다.")
+        return
+    if args.daily_update:
+        daily_update(Supabase(url, key), args.dry_run)
         return
 
     scores = json.loads((SIGNALS / "scores_latest.json").read_text(encoding="utf-8"))
