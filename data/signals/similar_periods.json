@@ -1,11 +1,11 @@
 {
- "as_of": "20261026",
+ "as_of": "20261027",
  "period": [
   "20170224",
-  "20261026"
+  "20261027"
  ],
  "current": {
-  "fear_greed": 26.3,
+  "fear_greed": 29.5,
   "band": "공포",
   "band_range": [
    25,
@@ -50,7 +50,7 @@
  },
  "baseline": {
   "1개월": {
-   "n": 2410,
+   "n": 2411,
    "mean": 0.0114,
    "median": 0.0172,
    "win_rate": 0.685,
@@ -58,25 +58,25 @@
    "best": 0.2566
   },
   "3개월": {
-   "n": 2368,
+   "n": 2369,
    "mean": 0.0343,
-   "median": 0.0421,
+   "median": 0.0422,
    "win_rate": 0.762,
    "worst": -0.3079,
    "best": 0.3987
   },
   "6개월": {
-   "n": 2305,
-   "mean": 0.0686,
-   "median": 0.0768,
+   "n": 2306,
+   "mean": 0.0687,
+   "median": 0.0769,
    "win_rate": 0.783,
    "worst": -0.2549,
    "best": 0.4722
   },
   "1년": {
-   "n": 2179,
+   "n": 2180,
    "mean": 0.138,
-   "median": 0.1457,
+   "median": 0.1456,
    "win_rate": 0.841,
    "worst": -0.2101,
    "best": 0.7541
@@ -117,7 +117,7 @@
   },
   {
    "date": "20170809",
-   "fear_greed": 42.3,
+   "fear_greed": 42.4,
    "episode": null,
    "returns": {
     "1개월": -0.0028,
@@ -213,7 +213,7 @@
   },
   {
    "date": "20190801",
-   "fear_greed": 38.7,
+   "fear_greed": 38.8,
    "episode": "미중 무역전쟁·장단기 금리 역전",
    "returns": {
     "1개월": -0.008,
@@ -237,7 +237,7 @@
   },
   {
    "date": "20200127",
-   "fear_greed": 35.9,
+   "fear_greed": 36.0,
    "episode": null,
    "returns": {
     "1개월": -0.0369,
@@ -357,7 +357,7 @@
   },
   {
    "date": "20230824",
-   "fear_greed": 39.0,
+   "fear_greed": 39.1,
    "episode": null,
    "returns": {
     "1개월": -0.0107,
@@ -417,7 +417,7 @@
   },
   {
    "date": "20250801",
-   "fear_greed": 42.2,
+   "fear_greed": 42.3,
    "episode": null,
    "returns": {
     "1개월": 0.0299,
@@ -429,7 +429,7 @@
   },
   {
    "date": "20251010",
-   "fear_greed": 35.4,
+   "fear_greed": 35.5,
    "episode": null,
    "returns": {
     "1개월": 0.0429,

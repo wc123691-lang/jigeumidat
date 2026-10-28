@@ -1,6 +1,4 @@
 symbol,date,price_factor,exact,decision,reason
-GXAI,20250819,2,False,move,"발행 주식 수 x1.00, 분할 아님"
-LNZA,20250819,100,False,split,발행 주식 수 x0.01
 CLDI,20250820,0.5,False,split,발행 주식 수 x2.09
 ELPW,20250820,0.125,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 NVNO,20250820,0.3333333333333333,False,move,"발행 주식 수 x1.05, 분할 아님"
@@ -17,7 +15,6 @@ PTIX,20250821,2,False,move,"발행 주식 수 x3.25, 분할 아님"
 STFS,20250821,0.5,False,move,"발행 주식 수 x0.09, 분할 아님"
 ETS,20250822,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 MODV,20250822,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
-NXLIW,20250822,3,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 OESX,20250822,10,True,split,발행 주식 수 x0.10
 ZVZZT,20250822,0.5,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 BCTX,20250825,10,False,move,"발행 주식 수 x0.28, 분할 아님"
@@ -41,7 +38,6 @@ MDBX,20250827,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분�
 NBY,20250827,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 PSNYW,20250827,3,False,move,"SEC 발행 주식 수 데이터 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 RAY,20250827,0.5,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
-AIMDW,20250828,0.5,False,move,"발행 주식 수 x1.03, 분할 아님"
 CWD,20250828,3,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 DRIO,20250828,20,False,move,"발행 주식 수 x0.15, 분할 아님"
 GDHG,20250828,20,False,split,"SEC 발행 주식 수 데이터 없음, 배율 10배 이상이라 가격 비율로 판단"
@@ -53,7 +49,6 @@ SMX,20250828,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 �
 SOGP,20250828,4,False,move,"발행 주식 수 x0.85, 분할 아님"
 AIIOW,20250829,2,False,move,"SEC 발행 주식 수 데이터 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 EAF,20250829,10,False,split,발행 주식 수 x0.10
-FLYX+,20250829,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 IPDN,20250829,4,False,move,"발행 주식 수 x1.95, 분할 아님"
 MOVE,20250829,2,False,move,"발행 주식 수 x1.19, 분할 아님"
 ODVWZ,20250829,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
@@ -185,7 +180,6 @@ ARQQW,20250919,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분�
 BIAF,20250919,30,False,move,"발행 주식 수 x0.16, 분할 아님"
 CJET,20250919,3,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
 PXSAW,20250919,2,False,move,"SEC 공시 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
-SAIHW,20250919,3,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 VOR,20250919,20,False,move,"발행 주식 수 x0.08, 분할 아님"
 ARBB,20250922,2,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 BETRW,20250922,3,False,move,"SEC 발행 주식 수 데이터 없음, 비율이 딱 맞지 않아 분할로 보지 않음"
@@ -3413,3 +3407,14 @@ TWG,20261026,100,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 �
 UUUC,20261026,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 XP,20261026,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
 XXII,20261026,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+AZTR,20261027,15,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+DAVEW,20261027,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+DVLT,20261027,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+ENLV,20261027,15,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+HCTI,20261027,20,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+LTRYW,20261027,0.5,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+NUWE,20261027,15,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+PARA,20261027,10,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+RIBBU,20261027,2,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+SCAG,20261027,15,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
+SXTC,20261027,100,False,pending,"SEC 조회 실패(HTTP 403), 가격 비율로 임시 보정"
