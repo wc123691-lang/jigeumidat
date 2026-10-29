@@ -277,6 +277,15 @@ def preset_score(signal: dict, weights: dict) -> float | None:
     return sum(signal[f"s_{k}"] * w for k, w in used.items()) / sum(used.values())
 
 
+def keep_previous(date: str) -> None:
+    """새 날짜로 덮어쓰기 전에 지난 거래일 파일을 *_prev.json으로 둔다 (알림이 전날 대비 신호별 변화를 계산한다).
+    같은 날짜로 다시 계산할 때는 그대로 둔다."""
+    for name in ("scores", "market"):
+        latest = OUT_DIR / f"{name}_latest.json"
+        if latest.exists() and json.loads(latest.read_text(encoding="utf-8")).get("date") != date:
+            (OUT_DIR / f"{name}_prev.json").write_text(latest.read_text(encoding="utf-8"), encoding="utf-8")
+
+
 def main() -> None:
     until = sys.argv[1] if len(sys.argv) > 1 else "99999999"
     series, dates = load_closes(until)
@@ -327,6 +336,7 @@ def main() -> None:
         "data": {r["symbol"]: [round(r[k], 2 if k == "close" else 1) if isinstance(r[k], (int, float)) and not isinstance(r[k], bool) else None
                                for k in fields] for r in rows},
     }
+    keep_previous(date)
     (OUT_DIR / "scores_latest.json").write_text(json.dumps(compact, separators=(",", ":")), encoding="utf-8")
     spy_row = next((r for r in rows if r["symbol"] == "SPY"), None)
     if spy_row and spy_row.get("rsi14") is not None:

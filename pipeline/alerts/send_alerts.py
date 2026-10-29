@@ -7,7 +7,9 @@
 내 신호 공식은 앱(src/signals.ts mySignal, rsiScore)과 같다: 값이 있는 신호끼리 비중으로 가중 평균.
 - 분할 계획(설정의 "split": 점수대별 사고팔 비중)이 있으면 알림에 '계획 1단계 30% 분할매수'처럼 붙이고,
   이미 기준을 넘은 상태에서 다음 단계를 새로 넘은 날도 알린다 (어제 점수와 비교, 앱 src/signals.ts splitText와 같은 규칙).
-- 알림에 그 쪽으로 가장 크게 기여한 신호를 붙이고, 지난 실행보다 BIG_MOVE점 넘게 움직였으면 하루 변화도 붙인다 (앱 BIG_MOVE와 같은 값).
+- 알림에 그 쪽으로 가장 크게 기여한 신호를 붙이고, 전날보다 급변 기준(사용자가 고른 10·15·20, 기본 15)점 넘게 움직였으면 하루 변화도 붙인다.
+- 급변 알림: 기준을 넘지 않았어도 하루에 급변 기준만큼 움직이면 가장 크게 움직인 신호와 함께 알린다 (끄면 base_settings "jumpAlert" false).
+  전날 신호별 점수는 지난 거래일 파일(scores_prev.json, market_prev.json)로 같은 설정에서 다시 계산한다.
 
 내부자 거래 알림도 같이 보낸다 (별도 푸시): 사용자가 지켜보는 종목(보유·전용 신호·시뮬레이션해 본 종목)에
 지난 실행 뒤 새로 공시된 내부자 장내 매수를 묶어 알린다. 매도는 사용자가 켰을 때만, 계획 매도(10b5-1)는 빼고.
@@ -62,7 +64,7 @@ PAGE = 1000
 FIELD_TO_KEY = {"s_rsi": "rsi", "s_bb": "bb", "s_gap": "gap", "s_trend": "trend", "s_dd": "dd", "s_ins": "ins",
                 "s_fg": "fg", "s_vix": "vix", "s_fx": "fx", "s_spx": "spx"}
 NAME = {"buy": "매수", "sell": "매도"}
-BIG_MOVE = 15  # 앱 src/signals.ts BIG_MOVE와 같게
+BIG_MOVE = 15  # 급변 기준 기본값 (앱 src/signals.ts BIG_MOVE_DEFAULT와 같게). 사용자가 고르면 base_settings의 "bigMove"
 LABEL = {"fg": "공포·탐욕 지수", "vix": "시장 변동성", "fx": "원/달러 환율", "spx": "S&P500 200일선", "rsi": "RSI",
          "bb": "볼린저밴드 위치", "gap": "200일선 아래 괴리", "trend": "200일선 위 추세", "ins": "내부자 매수", "dd": "52주 고점 대비 하락"}
 
@@ -80,6 +82,33 @@ def my_signal(components: dict, settings: dict) -> float | None:
     used = {k: w for k, w in weights.items() if k in components and w > 0}
     total = sum(used.values())
     return sum(components[k] * w for k, w in used.items()) / total if total else None
+
+
+def signed(v: float) -> str:
+    return f"{'+' if v > 0 else '−' if v < 0 else ''}{abs(round(v))}"
+
+
+def with_subject(word: str) -> str:
+    """받침이 있으면 '이', 없으면 '가' (영문으로 끝나면 '가': RSI)"""
+    c = ord(word[-1])
+    return word + ("이" if 0xAC00 <= c <= 0xD7A3 and (c - 0xAC00) % 28 else "가")
+
+
+def contributions(components: dict, settings: dict) -> dict:
+    weights = settings.get("weights", {})
+    used = {k: w for k, w in weights.items() if k in components and w > 0}
+    total = sum(used.values())
+    return {k: components[k] * w / total for k, w in used.items()} if total else {}
+
+
+def move_cause(prev: dict, cur: dict, settings: dict) -> str | None:
+    """전날 → 오늘 가장 크게 움직인 신호: 'RSI가 −14로 가장 크게 끌어내렸어요' (앱 moveBreakdown과 같은 계산)"""
+    a, b = contributions(prev, settings), contributions(cur, settings)
+    deltas = {k: b.get(k, 0) - a.get(k, 0) for k in set(a) | set(b)}
+    if not deltas:
+        return None
+    k = max(deltas, key=lambda x: abs(deltas[x]))
+    return f"{with_subject(LABEL.get(k, k))} {signed(deltas[k])}로 가장 크게 {'끌어올렸어요' if deltas[k] > 0 else '끌어내렸어요'}"
 
 
 def top_driver(components: dict, settings: dict, side: str) -> str | None:
@@ -262,9 +291,20 @@ def main() -> None:
     profiles = db.all("alert_profiles", "select=user_id,push_token,base_settings,symbols&enabled=eq.true")
     state = {(r["user_id"], r["symbol"]): r for r in db.all("alert_state", "select=user_id,symbol,zone,score,signal_date")}
 
-    messages, updates, first_seen = [], [], 0
+    # 지난 거래일 파일 (compute_signals.py keep_previous). 날짜가 오늘보다 앞일 때만 쓴다
+    prev_scores = prev_market = None
+    if (SIGNALS / "scores_prev.json").exists() and (SIGNALS / "market_prev.json").exists():
+        prev_scores = json.loads((SIGNALS / "scores_prev.json").read_text(encoding="utf-8"))
+        prev_market = json.loads((SIGNALS / "market_prev.json").read_text(encoding="utf-8"))
+        if prev_scores["date"] >= d:
+            prev_scores = prev_market = None
+
+    messages, updates, first_seen, jump_messages = [], [], 0, 0
     for p in profiles:
         hits = []
+        base = p["base_settings"] or {}
+        big_move = base.get("bigMove") or BIG_MOVE  # 사용자가 고른 급변 기준 (10·15·20)
+        jump_on = base.get("jumpAlert") is not False
         for target in p["symbols"] or []:
             if target.get("signal") is False:
                 continue  # 시뮬레이션만 해 본 종목 등: 내부자 알림만
@@ -279,9 +319,13 @@ def main() -> None:
             if prev and prev["signal_date"] == today:
                 continue  # 오늘 신호로 이미 처리함
             shown = f"{'+' if score > 0 else '−'}{abs(round(score))}"
-            if prev and prev.get("score") is not None and abs(score - prev["score"]) >= BIG_MOVE:
-                d = score - prev["score"]
-                shown += f", 하루 {'+' if d > 0 else '−'}{abs(round(d))}"
+            # 전날 대비: 지난 거래일 파일로 같은 설정의 전날 점수를 다시 계산 (없으면 지난 실행 때 점수)
+            prev_comps = components_for(symbol, prev_scores, prev_market, settings) if prev_scores else None
+            prev_score = my_signal(prev_comps, settings) if prev_comps else (prev or {}).get("score")
+            move = score - prev_score if prev_score is not None else None
+            big = move is not None and abs(move) >= big_move
+            if big:
+                shown += f", 하루 {signed(move)}"
             driver = top_driver(comps, settings, zone) if zone in NAME else None
             why = f" · {driver} 영향이 가장 커요" if driver else ""
             if prev is None:
@@ -289,15 +333,18 @@ def main() -> None:
             elif zone != prev["zone"] and zone in NAME:
                 plan = split_text(settings, zone, score)
                 hits.append(f"{symbol} {NAME[zone]} 기준 충족 ({shown}){why}" + (f" · 계획 {plan}" if plan else ""))
-            elif zone == prev["zone"] and zone in NAME and prev.get("score") is not None:
+            elif zone == prev["zone"] and zone in NAME and prev.get("score") is not None                     and (plan := split_text(settings, zone, score, split_reached(settings, zone, prev["score"]))):
                 # 이미 기준을 넘은 상태에서 분할 계획의 다음 단계를 새로 넘은 날
-                plan = split_text(settings, zone, score, split_reached(settings, zone, prev["score"]))
-                if plan:
-                    hits.append(f"{symbol} {NAME[zone]} 다음 단계 ({shown}){why} · 계획 {plan}")
+                hits.append(f"{symbol} {NAME[zone]} 다음 단계 ({shown}){why} · 계획 {plan}")
+            elif big and jump_on:
+                # 기준과 상관없이 하루에 크게 움직인 날: 가장 크게 움직인 신호
+                cause = move_cause(prev_comps, comps, settings) if prev_comps else None
+                hits.append(f"{symbol} 내 신호 하루 {signed(move)} ({signed(prev_score)} → {signed(score)})" + (f" · {cause}" if cause else ""))
+                jump_messages += 1
             updates.append({"user_id": p["user_id"], "symbol": symbol, "zone": zone, "score": round(score, 1), "signal_date": today})
         if hits and p.get("push_token"):
-            messages.append({"to": p["push_token"], "title": "지금이닷 · 내 신호", "body": " · ".join(hits),
-                             "sound": "default", "channelId": "signals", "data": {"screen": "Journal"}})
+            messages.append({"to": p["push_token"], "title": "지금이닷 · 내 신호", "body": "\n".join(hits),
+                             "sound": "default", "channelId": "signals", "data": {"screen": "MarketCheck"}})
 
     # 내부자 거래: 지켜보는 종목에 지난번 뒤 새로 공시된 거래
     insider_cache: dict[str, list] = {}
@@ -382,7 +429,7 @@ def main() -> None:
             congress_messages += 1
 
     print(f"{today} 알림 대상 {len(profiles)}명 · 종목 상태 {len(updates)}건(처음 {first_seen}) · 보낼 알림 {len(messages)}건"
-          f"(내부자 {insider_messages}, 시장 {market_messages}, 의원 {congress_messages})")
+          f"(급변 {jump_messages}, 내부자 {insider_messages}, 시장 {market_messages}, 의원 {congress_messages})")
     if args.dry_run:
         return
     dead = send_push(messages) if messages else []
