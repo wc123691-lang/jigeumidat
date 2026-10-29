@@ -14,6 +14,9 @@
       <티커>.json   [종가 또는 null, ...] (_dates.json과 같은 순서, 그날 IEX 체결이 없으면 null)
       CON 같은 윈도우 예약 이름은 _CON.json (pipeline/insider/history.py와 같은 규칙)
       market.json  {"dates": [전체 거래일], "fg", "vix", "fx", "spx": [점수 또는 null, ...]}
+      vol/<티커>.json [평소 대비 거래량 또는 null, ...] (_dates.json과 같은 순서)
+        = 그날 IEX 거래량 ÷ 직전 20거래일 IEX 평균 (분할 보정). IEX는 전체 거래량의 2~3%라 절대량이 아닌 비율만 쓴다.
+        매매일지의 '산 날 거래량 평소의 N배'와 리포트 비교에 쓴다. 예전 앱이 읽는 종가 파일 모양은 그대로 둔다.
 """
 
 import bisect
@@ -31,6 +34,8 @@ from market import usd_krw
 
 ROOT = Path(__file__).resolve().parents[2]
 DAYS = 252  # 1년
+VOL_WINDOW = 20  # 평소 거래량 = 직전 20거래일 평균
+VOL_MIN_DAYS = 15  # 그중 이만큼은 거래가 있어야 비율을 낸다
 RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM\d|LPT\d)$")
 
 
@@ -83,11 +88,40 @@ def market_history() -> dict:
     return out
 
 
+def load_volumes(dates: list[str]) -> dict[str, dict[str, float]]:
+    """symbol -> {날짜: 그날 IEX 거래량}"""
+    vols: dict[str, dict[str, float]] = {}
+    for d in dates:
+        with (IEX_DIR / f"iex_{d}.csv").open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                if r["volume"]:
+                    vols.setdefault(r["symbol"], {})[d] = float(r["volume"])
+    return vols
+
+
+def volume_ratios(points: list, prices: list[float], vols: dict[str, float], all_dates: list[str], dates: list[str]) -> list[float | None]:
+    """dates마다 그날 거래량 ÷ 직전 VOL_WINDOW거래일 평균. 분할 전 거래량은 원래 가격 ÷ 보정 가격만큼 키워 맞춘다."""
+    adj: dict[str, float] = {}
+    for (d, raw, _), p in zip(points, prices):
+        if d in vols and p > 0:
+            adj[d] = vols[d] * raw / p
+    pos = {d: i for i, d in enumerate(all_dates)}
+    out: list[float | None] = []
+    for d in dates:
+        i = pos[d]
+        prev = [adj[x] for x in all_dates[max(0, i - VOL_WINDOW):i] if x in adj]
+        avg = sum(prev) / len(prev) if len(prev) >= VOL_MIN_DAYS else 0
+        out.append(round(adj[d] / avg, 1) if d in adj and avg > 0 else None)
+    return out
+
+
 def main() -> None:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "output" / "prices"
     out.mkdir(parents=True, exist_ok=True)
-    series, dates = load_closes("99999999")
-    dates = dates[-DAYS:]
+    series, all_dates = load_closes("99999999")
+    dates = all_dates[-DAYS:]
+    vols = load_volumes(all_dates[-(DAYS + VOL_WINDOW):])
+    (out / "vol").mkdir(exist_ok=True)
     # 분할 판정: PC에서 SEC로 확인한 전체 기간 판정 + 오늘 신호 계산의 판정
     splits = {key: float(r["price_factor"]) for key, r in load_decisions().items() if applies(r)}
 
@@ -104,6 +138,9 @@ def main() -> None:
         if any(v is not None for v in row):
             (out / file_name(ticker)).write_text(json.dumps(row, separators=(",", ":")), encoding="utf-8")
             written += 1
+            ratios = volume_ratios(points, prices, vols.get(ticker, {}), all_dates, dates)
+            if any(v is not None for v in ratios):
+                (out / "vol" / file_name(ticker)).write_text(json.dumps(ratios, separators=(",", ":")), encoding="utf-8")
     (out / "_dates.json").write_text(json.dumps([f"{d[:4]}-{d[4:6]}-{d[6:]}" for d in dates]), encoding="utf-8")
     market = market_history()
     (out / "market.json").write_text(json.dumps(market, separators=(",", ":")), encoding="utf-8")
