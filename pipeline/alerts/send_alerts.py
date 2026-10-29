@@ -7,6 +7,7 @@
 내 신호 공식은 앱(src/signals.ts mySignal, rsiScore)과 같다: 값이 있는 신호끼리 비중으로 가중 평균.
 - 분할 계획(설정의 "split": 점수대별 사고팔 비중)이 있으면 알림에 '계획 1단계 30% 분할매수'처럼 붙이고,
   이미 기준을 넘은 상태에서 다음 단계를 새로 넘은 날도 알린다 (어제 점수와 비교, 앱 src/signals.ts splitText와 같은 규칙).
+- 알림에 그 쪽으로 가장 크게 기여한 신호를 붙이고, 지난 실행보다 BIG_MOVE점 넘게 움직였으면 하루 변화도 붙인다 (앱 BIG_MOVE와 같은 값).
 
 내부자 거래 알림도 같이 보낸다 (별도 푸시): 사용자가 지켜보는 종목(보유·전용 신호·시뮬레이션해 본 종목)에
 지난 실행 뒤 새로 공시된 내부자 장내 매수를 묶어 알린다. 매도는 사용자가 켰을 때만, 계획 매도(10b5-1)는 빼고.
@@ -61,6 +62,9 @@ PAGE = 1000
 FIELD_TO_KEY = {"s_rsi": "rsi", "s_bb": "bb", "s_gap": "gap", "s_trend": "trend", "s_dd": "dd", "s_ins": "ins",
                 "s_fg": "fg", "s_vix": "vix", "s_fx": "fx", "s_spx": "spx"}
 NAME = {"buy": "매수", "sell": "매도"}
+BIG_MOVE = 15  # 앱 src/signals.ts BIG_MOVE와 같게
+LABEL = {"fg": "공포·탐욕 지수", "vix": "시장 변동성", "fx": "원/달러 환율", "spx": "S&P500 200일선", "rsi": "RSI",
+         "bb": "볼린저밴드 위치", "gap": "200일선 아래 괴리", "trend": "200일선 위 추세", "ins": "내부자 매수", "dd": "52주 고점 대비 하락"}
 
 
 def clamp(x: float) -> float:
@@ -76,6 +80,18 @@ def my_signal(components: dict, settings: dict) -> float | None:
     used = {k: w for k, w in weights.items() if k in components and w > 0}
     total = sum(used.values())
     return sum(components[k] * w for k, w in used.items()) / total if total else None
+
+
+def top_driver(components: dict, settings: dict, side: str) -> str | None:
+    """그 쪽(매수 = +, 매도 = −)으로 가장 크게 기여한 신호 이름"""
+    weights = settings.get("weights", {})
+    used = {k: w for k, w in weights.items() if k in components and w > 0}
+    total = sum(used.values())
+    if not total:
+        return None
+    contrib = {k: components[k] * w / total for k, w in used.items()}
+    k = max(contrib, key=contrib.get) if side == "buy" else min(contrib, key=contrib.get)
+    return LABEL.get(k) if (contrib[k] > 0) == (side == "buy") else None
 
 
 def split_steps(settings: dict, side: str) -> list[dict]:
@@ -263,16 +279,21 @@ def main() -> None:
             if prev and prev["signal_date"] == today:
                 continue  # 오늘 신호로 이미 처리함
             shown = f"{'+' if score > 0 else '−'}{abs(round(score))}"
+            if prev and prev.get("score") is not None and abs(score - prev["score"]) >= BIG_MOVE:
+                d = score - prev["score"]
+                shown += f", 하루 {'+' if d > 0 else '−'}{abs(round(d))}"
+            driver = top_driver(comps, settings, zone) if zone in NAME else None
+            why = f" · {driver} 영향이 가장 커요" if driver else ""
             if prev is None:
                 first_seen += 1
             elif zone != prev["zone"] and zone in NAME:
                 plan = split_text(settings, zone, score)
-                hits.append(f"{symbol} {NAME[zone]} 기준 충족 ({shown})" + (f" · 계획 {plan}" if plan else ""))
+                hits.append(f"{symbol} {NAME[zone]} 기준 충족 ({shown}){why}" + (f" · 계획 {plan}" if plan else ""))
             elif zone == prev["zone"] and zone in NAME and prev.get("score") is not None:
                 # 이미 기준을 넘은 상태에서 분할 계획의 다음 단계를 새로 넘은 날
                 plan = split_text(settings, zone, score, split_reached(settings, zone, prev["score"]))
                 if plan:
-                    hits.append(f"{symbol} {NAME[zone]} 다음 단계 ({shown}) · 계획 {plan}")
+                    hits.append(f"{symbol} {NAME[zone]} 다음 단계 ({shown}){why} · 계획 {plan}")
             updates.append({"user_id": p["user_id"], "symbol": symbol, "zone": zone, "score": round(score, 1), "signal_date": today})
         if hits and p.get("push_token"):
             messages.append({"to": p["push_token"], "title": "지금이닷 · 내 신호", "body": " · ".join(hits),
