@@ -1,56 +1,56 @@
 {
- "as_of": "20261027",
+ "as_of": "20261028",
  "period": [
   "20170224",
-  "20261027"
+  "20261028"
  ],
  "current": {
-  "fear_greed": 29.5,
+  "fear_greed": 30.9,
   "band": "공포",
   "band_range": [
    25,
    45
   ]
  },
- "events": 32,
+ "events": 31,
  "reference_only": false,
  "stats": {
   "1개월": {
-   "n": 32,
-   "mean": 0.0224,
+   "n": 31,
+   "mean": 0.0218,
    "median": 0.0325,
-   "win_rate": 0.781,
+   "win_rate": 0.774,
    "worst": -0.1035,
    "best": 0.0754
   },
   "3개월": {
-   "n": 31,
-   "mean": 0.0421,
-   "median": 0.0494,
-   "win_rate": 0.71,
+   "n": 30,
+   "mean": 0.0443,
+   "median": 0.0513,
+   "win_rate": 0.733,
    "worst": -0.1124,
    "best": 0.145
   },
   "6개월": {
-   "n": 30,
-   "mean": 0.0909,
-   "median": 0.0873,
-   "win_rate": 0.867,
+   "n": 29,
+   "mean": 0.0939,
+   "median": 0.0913,
+   "win_rate": 0.862,
    "worst": -0.0949,
    "best": 0.2398
   },
   "1년": {
-   "n": 29,
-   "mean": 0.137,
-   "median": 0.153,
-   "win_rate": 0.828,
+   "n": 28,
+   "mean": 0.1353,
+   "median": 0.1496,
+   "win_rate": 0.821,
    "worst": -0.2045,
    "best": 0.479
   }
  },
  "baseline": {
   "1개월": {
-   "n": 2411,
+   "n": 2412,
    "mean": 0.0114,
    "median": 0.0172,
    "win_rate": 0.685,
@@ -58,15 +58,15 @@
    "best": 0.2566
   },
   "3개월": {
-   "n": 2369,
+   "n": 2370,
    "mean": 0.0343,
-   "median": 0.0422,
+   "median": 0.0421,
    "win_rate": 0.762,
    "worst": -0.3079,
    "best": 0.3987
   },
   "6개월": {
-   "n": 2306,
+   "n": 2307,
    "mean": 0.0687,
    "median": 0.0769,
    "win_rate": 0.783,
@@ -74,7 +74,7 @@
    "best": 0.4722
   },
   "1년": {
-   "n": 2180,
+   "n": 2181,
    "mean": 0.138,
    "median": 0.1456,
    "win_rate": 0.841,
@@ -83,9 +83,9 @@
   }
  },
  "max_drawdown_6m": {
-  "n": 30,
-  "mean": -0.0614,
-  "median": -0.0321,
+  "n": 29,
+  "mean": -0.0538,
+  "median": -0.0318,
   "win_rate": 0.0,
   "worst": -0.3134,
   "best": 0.0
@@ -153,7 +153,7 @@
   },
   {
    "date": "20180815",
-   "fear_greed": 41.5,
+   "fear_greed": 41.6,
    "episode": null,
    "returns": {
     "1개월": 0.0325,
@@ -189,7 +189,7 @@
   },
   {
    "date": "20190322",
-   "fear_greed": 36.4,
+   "fear_greed": 36.5,
    "episode": null,
    "returns": {
     "1개월": 0.0488,
@@ -222,18 +222,6 @@
     "1년": 0.1076
    },
    "max_drawdown_6m": -0.0369
-  },
-  {
-   "date": "20191203",
-   "fear_greed": 44.9,
-   "episode": null,
-   "returns": {
-    "1개월": 0.0419,
-    "3개월": -0.0226,
-    "6개월": 0.006,
-    "1년": 0.185
-   },
-   "max_drawdown_6m": -0.2822
   },
   {
    "date": "20200127",
@@ -357,7 +345,7 @@
   },
   {
    "date": "20230824",
-   "fear_greed": 39.1,
+   "fear_greed": 39.0,
    "episode": null,
    "returns": {
     "1개월": -0.0107,
@@ -393,7 +381,7 @@
   },
   {
    "date": "20241218",
-   "fear_greed": 29.6,
+   "fear_greed": 29.7,
    "episode": null,
    "returns": {
     "1개월": 0.034,
