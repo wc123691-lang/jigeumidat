@@ -5,6 +5,8 @@
 - 처음 보는 종목은 상태만 기록한다 (알림을 켠 날 이미 기준 위에 있던 종목까지 한꺼번에 울리지 않게).
 - 같은 신호 날짜로 다시 돌면 보내지 않는다 (휴장일·재실행).
 내 신호 공식은 앱(src/signals.ts mySignal, rsiScore)과 같다: 값이 있는 신호끼리 비중으로 가중 평균.
+- 분할 계획(설정의 "split": 점수대별 사고팔 비중)이 있으면 알림에 '계획 1단계 30% 분할매수'처럼 붙이고,
+  이미 기준을 넘은 상태에서 다음 단계를 새로 넘은 날도 알린다 (어제 점수와 비교, 앱 src/signals.ts splitText와 같은 규칙).
 
 내부자 거래 알림도 같이 보낸다 (별도 푸시): 사용자가 지켜보는 종목(보유·전용 신호·시뮬레이션해 본 종목)에
 지난 실행 뒤 새로 공시된 내부자 장내 매수를 묶어 알린다. 매도는 사용자가 켰을 때만, 계획 매도(10b5-1)는 빼고.
@@ -74,6 +76,24 @@ def my_signal(components: dict, settings: dict) -> float | None:
     used = {k: w for k, w in weights.items() if k in components and w > 0}
     total = sum(used.values())
     return sum(components[k] * w for k, w in used.items()) / total if total else None
+
+
+def split_steps(settings: dict, side: str) -> list[dict]:
+    steps = (settings.get("split") or {}).get(side) or []
+    return sorted(steps, key=lambda st: st["at"], reverse=side == "sell")  # 1단계부터
+
+
+def split_reached(settings: dict, side: str, score: float) -> int:
+    return sum(1 for st in split_steps(settings, side) if (score >= st["at"] if side == "buy" else score <= st["at"]))
+
+
+def split_text(settings: dict, side: str, score: float, start: int = 0) -> str | None:
+    """새로 넘은 단계(start 다음부터)의 비중 합: '2단계 30% 분할매수'. 없으면 None."""
+    steps, n = split_steps(settings, side), split_reached(settings, side, score)
+    if n <= start:
+        return None
+    pct = sum(st["pct"] for st in steps[start:n])
+    return f"{f'{start + 1}~{n}단계' if n - start > 1 else f'{n}단계'} {pct:g}% 분할{NAME[side]}"
 
 
 def components_for(symbol: str, scores: dict, market: dict, settings: dict) -> dict | None:
@@ -224,7 +244,7 @@ def main() -> None:
     today = f"{d[:4]}-{d[4:6]}-{d[6:]}"
     db = Supabase(url, key)
     profiles = db.all("alert_profiles", "select=user_id,push_token,base_settings,symbols&enabled=eq.true")
-    state = {(r["user_id"], r["symbol"]): r for r in db.all("alert_state", "select=user_id,symbol,zone,signal_date")}
+    state = {(r["user_id"], r["symbol"]): r for r in db.all("alert_state", "select=user_id,symbol,zone,score,signal_date")}
 
     messages, updates, first_seen = [], [], 0
     for p in profiles:
@@ -242,10 +262,17 @@ def main() -> None:
             prev = state.get((p["user_id"], symbol))
             if prev and prev["signal_date"] == today:
                 continue  # 오늘 신호로 이미 처리함
+            shown = f"{'+' if score > 0 else '−'}{abs(round(score))}"
             if prev is None:
                 first_seen += 1
             elif zone != prev["zone"] and zone in NAME:
-                hits.append(f"{symbol} {NAME[zone]} 기준 충족 ({'+' if score > 0 else '−'}{abs(round(score))})")
+                plan = split_text(settings, zone, score)
+                hits.append(f"{symbol} {NAME[zone]} 기준 충족 ({shown})" + (f" · 계획 {plan}" if plan else ""))
+            elif zone == prev["zone"] and zone in NAME and prev.get("score") is not None:
+                # 이미 기준을 넘은 상태에서 분할 계획의 다음 단계를 새로 넘은 날
+                plan = split_text(settings, zone, score, split_reached(settings, zone, prev["score"]))
+                if plan:
+                    hits.append(f"{symbol} {NAME[zone]} 다음 단계 ({shown}) · 계획 {plan}")
             updates.append({"user_id": p["user_id"], "symbol": symbol, "zone": zone, "score": round(score, 1), "signal_date": today})
         if hits and p.get("push_token"):
             messages.append({"to": p["push_token"], "title": "지금이닷 · 내 신호", "body": " · ".join(hits),
