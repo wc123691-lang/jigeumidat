@@ -149,8 +149,14 @@ def daily_rows() -> list[dict]:
         path = INSIDER / name
         if not path.exists():
             continue
+        seen: set[tuple] = set()
         with path.open(encoding="utf-8") as f:
             for r in csv.DictReader(f):
+                # 똑같은 줄은 한 번만 더한다 (2026-11 이전 form4.py가 공동 신고 공시를 신고자 수만큼 반복해 적었다)
+                line = tuple(r.values())
+                if line in seen:
+                    continue
+                seen.add(line)
                 r["trade_date"] = r["trade_date"][:10]  # Form 4 XML 날짜에 시간대가 붙기도 한다 (2026-09-28-05:00)
                 key = (r["accession"], r["trade_date"], code)
                 row = merged.get(key)

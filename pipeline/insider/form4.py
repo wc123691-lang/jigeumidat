@@ -75,8 +75,14 @@ def form4_paths(day: date) -> list[str] | None:
     raw = sec_get(DAILY_INDEX.format(y=day.year, q=(day.month - 1) // 3 + 1, d=day.strftime("%Y%m%d")))
     if raw is None:
         return None
-    return [line.split()[-1] for line in raw.decode("latin-1").splitlines()
-            if line.startswith(("4 ", "4/A "))]
+    # 색인에는 같은 공시가 신고자(공동 신고한 펀드·사람)마다 한 줄씩, 각자의 CIK 폴더 경로로 올라온다
+    # (edgar/data/<CIK>/<공시번호>.txt) → 공시번호가 같으면 한 번만 받는다
+    paths: dict[str, str] = {}
+    for line in raw.decode("latin-1").splitlines():
+        if line.startswith(("4 ", "4/A ")):
+            path = line.split()[-1]
+            paths.setdefault(path.rsplit("/", 1)[-1], path)
+    return list(paths.values())
 
 
 def text(node, path: str) -> str:
@@ -199,7 +205,12 @@ def collect() -> None:
                 counts = []
                 for code, rows in found.items():
                     path = OUTPUT[code]
-                    new = [r for r in rows if (r["accession"], r["trade_date"], str(r["shares"]), str(r["price"])) not in seen[code]]
+                    new = []
+                    for r in rows:
+                        key = (r["accession"], r["trade_date"], str(r["shares"]), str(r["price"]))
+                        if key not in seen[code]:  # 그날 모은 줄끼리도 겹치지 않게 바로 넣는다
+                            seen[code].add(key)
+                            new.append(r)
                     write_header = not path.exists()
                     with path.open("a", newline="", encoding="utf-8") as f:
                         w = csv.DictWriter(f, fieldnames=FIELDS)
