@@ -216,6 +216,10 @@ def main() -> None:
         if not is_trading_day(session):
             print(f"{session}은 미국 증시 휴장일이라 새 파일을 기다리지 않습니다.")
             hours = 0
+        elif last_saved_date(args.out_dir) >= session.strftime("%Y%m%d"):
+            # 예비 예약 실행 등으로 같은 날 다시 돌 때: 이미 처리했으니 다음 날 파일을 몇 시간씩 기다리지 않는다
+            print(f"{session} 파일은 이미 처리했습니다.")
+            hours = 0
         date = wait_for_new_date(last_saved_date(args.out_dir), hours)
         if date is None:
             print("새 파일이 없습니다 (휴장일이거나 IEX 공개 지연). 종료합니다.")

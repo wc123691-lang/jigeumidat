@@ -26,7 +26,7 @@
 지난 실행 뒤 새로 공시된 거래가 있으면 묶어 알린다. 공시는 data/congress/members/<id>.json (PC 정오 작업이 매일 갱신).
 - 사용자마다 '어디까지 알렸나'(마지막 공시일)는 alert_state의 '__congress__' 줄에 둔다. 처음에는 기준만 기록한다.
 
-매일 업데이트 알림은 따로 돈다 (--daily-update, daily_update.yml이 밤 10시 KST에 실행): 오늘 신호가 새로 계산된 날
+매일 업데이트 알림은 따로 돈다 (--daily-update, iex_daily.yml이 새 데이터를 올린 직후 실행): 오늘 신호가 새로 계산된 날
 푸시 토큰이 있는 모든 사용자에게 같은 문구를 보낸다. '알림 받기'(enabled)와 상관없고, 끈 사용자는 base_settings의
 "dailyUpdate"가 false다 (예전 앱은 이 값이 없어 켠 것으로 본다).
 - 신호 날짜가 어제(UTC)가 아니면(휴장일, 데이터가 아직 안 나옴) 보내지 않는다.
