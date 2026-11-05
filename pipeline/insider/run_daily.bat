@@ -4,7 +4,8 @@ rem Run daily by Windows Task Scheduler. SEC_USER_AGENT comes from the user envi
 rem (setx SEC_USER_AGENT "Jigeumidat your@email") so the email is not stored in this public repo.
 set PYTHONIOENCODING=utf-8
 cd /d "%~dp0..\.."
-git pull -q --rebase
+rem --autostash: if an earlier run was cut off before its commit, keep its data instead of failing the pull
+git pull -q --rebase --autostash
 python pipeline\insider\form4.py >> pipeline\insider\run.log 2>&1
 rem exit code 3: another collection is still running (output\form4.lock); it will build and push when done
 if errorlevel 3 exit /b 0
@@ -20,4 +21,5 @@ python pipeline\congress\house_returns.py >> pipeline\insider\run.log 2>&1
 rem insider cluster-buy backtest shown in the app (also needs output\history)
 python pipeline\insider\backtest.py >> pipeline\insider\run.log 2>&1
 git add data\insider data\congress data\signals\split_decisions_full.csv
-git diff --cached --quiet || (git commit -q -m "Insider trades" && git push -q)
+rem the run takes ~30 min and GitHub Actions push closes meanwhile: rebase onto them before pushing
+git diff --cached --quiet || (git commit -q -m "Insider trades" && git pull -q --rebase && git push -q)
